@@ -53,11 +53,12 @@ export function ServerMangaGridCard({
       <NemuText numberOfLines={2} style={[styles.title, { color: tokens.foreground }]}>
         {item.title}
       </NemuText>
-      {item.authors?.length ? (
-        <NemuText numberOfLines={1} style={[styles.subtitle, { color: tokens.mutedForeground }]}>
-          {item.authors.join(", ")}
-        </NemuText>
-      ) : null}
+      {/* Always rendered: a missing author must leave the same slot, or
+          cards in one row end up different heights and anything below the
+          card (e.g. an Add to Library button) sits uneven. */}
+      <NemuText numberOfLines={1} style={[styles.subtitle, { color: tokens.mutedForeground }]}>
+        {item.authors?.length ? item.authors.join(", ") : ""}
+      </NemuText>
     </NemuPressable>
   );
 }
@@ -75,8 +76,14 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 13,
     fontWeight: nemuFontWeight.semibold,
+    // Two lines, always: a one-line title must not make its card shorter
+    // than a row-mate with a two-line title.
+    lineHeight: 17,
+    minHeight: 34,
   },
   subtitle: {
     fontSize: 12,
+    lineHeight: 15,
+    minHeight: 15,
   },
 });
