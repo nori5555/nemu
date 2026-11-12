@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ServerMangaGridCard } from "@/components/ServerMangaGridCard";
 import {
   useInstalledSources,
@@ -38,6 +39,12 @@ type LibraryState =
   | { status: "error"; items: MobileLiveSearchManga[]; detail: string };
 
 /**
+ * Extra bottom space so list content clears the floating bottom tab bar
+ * (the tabs use disableAutomaticContentInsets, so nothing adds it).
+ */
+const TAB_BAR_CLEARANCE = 96;
+
+/**
  * A Suwayomi server's Library listing, one tap from the bottom bar: the
  * same listing the Browse page shows under Library, without drilling in
  * through Browse first. Tap a cover to open the existing detail/reader.
@@ -57,6 +64,7 @@ export function ServerLibraryScreen({
   const registryId = registryIdProp ?? normalizeMobileSourceRouteParam(params.registryId);
   const sourceId = sourceIdProp ?? normalizeMobileSourceRouteParam(params.sourceId);
   const { tokens } = useNemuTheme();
+  const insets = useSafeAreaInsets();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage).serverLibrary;
   const browserStrings = getMobileStrings(appLanguage).serverSourceBrowser;
@@ -185,7 +193,11 @@ export function ServerLibraryScreen({
         <Stack.Screen options={{ ...nativeHeaderOptions, title: screenTitle }} />
       ) : null}
       <View style={[styles.root, { backgroundColor: tokens.background }]}>
-        {!isSuwayomi || !installedSource ? (
+        {installed.loading ? (
+          <View style={[styles.center, { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE }]}>
+            <ActivityIndicator />
+          </View>
+        ) : !isSuwayomi || !installedSource ? (
           <NemuInlineEmptyState
             icon="cloud-offline"
             title={browserStrings.unsupported}
@@ -196,7 +208,7 @@ export function ServerLibraryScreen({
             <ActivityIndicator />
           </View>
         ) : error && items.length === 0 ? (
-          <View style={styles.center}>
+          <View style={[styles.center, { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE }]}>
             <NemuInlineEmptyState
               icon="warning-outline"
               title={strings.loadFailed}
@@ -218,7 +230,10 @@ export function ServerLibraryScreen({
             keyExtractor={(item) => item.id}
             numColumns={3}
             columnWrapperStyle={styles.row}
-            contentContainerStyle={styles.list}
+            contentContainerStyle={[
+              styles.list,
+              { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE },
+            ]}
             refreshing={refreshing}
             onRefresh={refresh}
             ListEmptyComponent={
@@ -276,7 +291,6 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 24,
     gap: 12,
   },
   row: {
