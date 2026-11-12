@@ -7,6 +7,7 @@ import {
   getMobileSourceReaderBackAction,
   getMobileSourceReaderHref,
   getMobileSourceRouteParamCandidates,
+  getMobileSourceServerSourcesHref,
   normalizeMobileReaderRouteLabel,
   normalizeMobileSourceRouteParam,
   parseMobileReaderRouteNumber,
@@ -42,6 +43,15 @@ describe("mobile source routes", () => {
         mangaId: "title/123?lang=ja",
       }),
     ).toBe("/sources/aidoku-community/ja.raw/title%2F123%3Flang%3Dja");
+  });
+
+  test("routes the server-source browser under the manga detail stack", () => {
+    expect(
+      getMobileSourceServerSourcesHref({
+        registryId: "self-hosted",
+        sourceId: "suwayomi.test",
+      }),
+    ).toBe("/sources/self-hosted/suwayomi.test/server-sources");
   });
 
   test("carries a bounded listing title into source manga navigation", () => {
