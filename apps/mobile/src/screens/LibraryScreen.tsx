@@ -13,6 +13,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { nextSyncTimestamp } from "@nemu/core";
 import { orderMobileTitleQuickActions } from "@/lib/mobileQuickActionOrder";
 import {
   AppState,
@@ -50,6 +51,8 @@ import {
   mobileLibraryTitleMenuAvailable,
 } from "@/components/MobileLibraryTitleMenu";
 import type { MobileLibraryTitleMenuProps } from "@/components/MobileLibraryTitleMenu.types";
+import { MobileLibraryPagekinHome } from "@/components/MobileLibraryPagekinHome";
+import { MobileMetadataEditorSheet } from "@/components/MobileMetadataEditorSheet";
 import { MobileLibrarySkeleton } from "@/components/MobileLibrarySkeleton";
 import { MobileLaunchRevealGroup } from "@/components/MobileLaunchRevealGroup";
 import type { MobileLaunchRevealGroup as MobileLaunchRevealGroupName } from "@/lib/mobileLaunchRevealPlan";
@@ -175,6 +178,16 @@ import {
   setMobileLibraryCollectionSelection,
   subscribeMobileLibraryCollectionSelection,
 } from "@/lib/mobileLibraryTitleMenu";
+import { resolveMobileLibraryDefaultCollectionId } from "@/lib/mobileLibraryDefaultCollection";
+import {
+  readMobileLibraryDefaultCollectionText,
+  writeMobileLibraryDefaultCollectionText,
+} from "@/lib/mobileLibraryDefaultCollectionStorage";
+import {
+  buildMobileMetadataEditedItem,
+  type MobileMetadataFormValues,
+} from "@/lib/mobileMetadataOverrides";
+import { getMobileMetadataEditorSaveResultAction } from "@/lib/mobileMetadataEditorBackBehavior";
 import {
   getMobileCollectionsManagerSheetLayout,
   getMobileLibraryTitleMenuSheetLayout,
@@ -375,6 +388,7 @@ function collectionBookCountText(count: number, strings: MobileStrings): string 
 }
 
 const LIBRARY_TITLE_MENU_ALL = "library:all";
+const LIBRARY_TITLE_MENU_DEFAULT_ALL = "library:default:all";
 const LIBRARY_TITLE_MENU_MANAGE = "library:manage";
 const LIBRARY_TITLE_MENU_COLLECTION_PREFIX = "library:collection:";
 
@@ -405,20 +419,25 @@ function LibraryTitleMenuSheet({
   collections,
   strings,
   selectedCollectionId,
+  defaultCollectionId,
   disabled,
   onClose,
   onDismiss,
   onSelect,
+  onSetDefaultCollection,
   onManage,
 }: {
   visible: boolean;
   collections: LocalCollection[];
   strings: MobileStrings;
   selectedCollectionId: string | null;
+  /** The collection the Library opens on (null = All). */
+  defaultCollectionId: string | null;
   disabled: boolean;
   onClose: () => void;
   onDismiss?: () => void;
   onSelect: (collectionId: string | null) => void;
+  onSetDefaultCollection: (collectionId: string | null) => void;
   onManage: () => void;
 }) {
   const { tokens } = useMobileNativeSheetTheme();
@@ -513,6 +532,32 @@ function LibraryTitleMenuSheet({
           icon: "albums-outline",
           selected: selectedCollectionId === collection.collectionId,
           onPress: () => onSelect(collection.collectionId),
+        })
+      )}
+      <View style={[styles.titleMenuSheetDivider, { backgroundColor: tokens.border }]} />
+      <Text
+        style={[
+          styles.titleMenuSheetRowText,
+          nemuSheetMetrics.rowLabel,
+          { color: tokens.mutedForeground, marginTop: 8 },
+        ]}
+      >
+        {strings.library.defaultCollection}
+      </Text>
+      {renderRow({
+        id: LIBRARY_TITLE_MENU_DEFAULT_ALL,
+        label: strings.library.all,
+        icon: "library-outline",
+        selected: defaultCollectionId === null,
+        onPress: () => onSetDefaultCollection(null),
+      })}
+      {collections.map((collection) =>
+        renderRow({
+          id: `library:default:${collection.collectionId}`,
+          label: collection.name,
+          icon: "albums-outline",
+          selected: defaultCollectionId === collection.collectionId,
+          onPress: () => onSetDefaultCollection(collection.collectionId),
         })
       )}
       <View style={[styles.titleMenuSheetDivider, { backgroundColor: tokens.border }]} />
@@ -895,6 +940,63 @@ export function LibraryScreen({
     ? routeCollectionId
     : sharedSelectedCollectionId;
   const setSelectedCollectionId = setMobileLibraryCollectionSelection;
+  // The default collection: the Library root opens on it at cold launch.
+  // Stored in a document-directory file (see
+  // mobileLibraryDefaultCollectionStorage).
+  const [defaultCollectionId, setDefaultCollectionId] = useState<string | null>(null);
+  const [defaultCollectionLoaded, setDefaultCollectionLoaded] = useState(false);
+  const defaultCollectionAppliedRef = useRef(false);
+  const [metadataEditorEntry, setMetadataEditorEntry] = useState<LibraryEntry | null>(null);
+  const [metadataEditorOpen, setMetadataEditorOpen] = useState(false);
+  const [savingMetadata, setSavingMetadata] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void readMobileLibraryDefaultCollectionText().then((text) => {
+      if (cancelled) return;
+      setDefaultCollectionId(text?.trim() ? text.trim() : null);
+      setDefaultCollectionLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Cold launch only: the Library root opens on the default collection.
+  // Once per mount — after the user picks All by hand in this session, the
+  // ref keeps it from yanking them back to the default.
+  useEffect(() => {
+    if (
+      isCollectionRoute ||
+      defaultCollectionAppliedRef.current ||
+      !defaultCollectionLoaded ||
+      collections.loading
+    ) {
+      return;
+    }
+    const resolved = resolveMobileLibraryDefaultCollectionId(
+      collections.data,
+      defaultCollectionId,
+    );
+    defaultCollectionAppliedRef.current = true;
+    if (resolved === null) {
+      if (defaultCollectionId !== null) {
+        // The stored default was deleted: drop the stale id.
+        setDefaultCollectionId(null);
+        void writeMobileLibraryDefaultCollectionText(null);
+      }
+      return;
+    }
+    if (selectedCollectionId === null) setSelectedCollectionId(resolved);
+  }, [
+    isCollectionRoute,
+    defaultCollectionLoaded,
+    collections.loading,
+    collections.data,
+    defaultCollectionId,
+    selectedCollectionId,
+    setSelectedCollectionId,
+  ]);
   const [showTitleMenuSheet, setShowTitleMenuSheet] = useState(false);
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [showManagePanel, setShowManagePanel] = useState(false);
@@ -1267,6 +1369,13 @@ export function LibraryScreen({
       savingCollectionMembershipRef.current || savingCollectionMembership,
     removing: removingCollectionRef.current || removingCollection,
   });
+
+  // Setting the default never switches what is shown now — it only decides
+  // what the Library opens on next cold launch.
+  const setDefaultCollection = useCallback((collectionId: string | null) => {
+    setDefaultCollectionId(collectionId);
+    void writeMobileLibraryDefaultCollectionText(collectionId);
+  }, []);
 
   const selectCollection = (
     nextCollectionId: string | null,
@@ -1894,11 +2003,13 @@ export function LibraryScreen({
         membership: collections.membership,
         libraryCount: libraryEntries.length,
         selectedCollectionId: effectiveCollectionId,
+        defaultCollectionId,
         labels: {
           all: strings.library.all,
           editCollection: strings.library.titleMenuEditCollection,
           newCollection: strings.library.titleMenuNewCollection,
           manageCollections: strings.library.titleMenuManageCollections,
+          defaultCollection: strings.library.defaultCollection,
           bookCount: (count) => collectionBookCountText(count, strings),
         },
         disabled: collectionActionBusy,
@@ -1907,6 +2018,7 @@ export function LibraryScreen({
       collectionActionBusy,
       collections.data,
       collections.membership,
+      defaultCollectionId,
       effectiveCollectionId,
       libraryEntries.length,
       strings,
@@ -1918,6 +2030,9 @@ export function LibraryScreen({
     switch (action.type) {
       case "select":
         selectCollection(action.collectionId, "native-title-menu");
+        return;
+      case "set-default":
+        setDefaultCollection(action.collectionId);
         return;
       case "edit-current":
         if (!showManagePanel) toggleCollectionManagement();
@@ -2226,6 +2341,16 @@ export function LibraryScreen({
           setMembershipSheetEntry(entry);
         },
       },
+      {
+        id: "editMetadata",
+        label: strings.mangaDetail.editMetadata,
+        icon: "pencil-outline",
+        onPress: () => {
+          setQuickActionEntry(null);
+          setMetadataEditorEntry(entry);
+          setMetadataEditorOpen(true);
+        },
+      },
     ];
     if (link) {
       actions.push({
@@ -2255,6 +2380,47 @@ export function LibraryScreen({
   const quickActions = useMemo(
     () => (quickActionEntry ? getEntryActions(quickActionEntry, quickActionLink ?? undefined) : []),
     [quickActionEntry, quickActionLink, getEntryActions],
+  );
+
+  // The metadata editor's cover source: the entry's most recent source, so
+  // the current cover previews with the right auth headers.
+  const metadataEditorCoverSource = useMemo(() => {
+    if (!metadataEditorEntry) return null;
+    const link = getMobileEntryQuickActionSource(metadataEditorEntry, progressIndex);
+    return link ? findInstalledSourceForLink(installedSources.data, link) : null;
+  }, [metadataEditorEntry, progressIndex, installedSources.data]);
+
+  const saveMetadataFromLibrary = useCallback(
+    async (form: MobileMetadataFormValues) => {
+      if (!metadataEditorEntry || savingMetadata) return;
+      setSavingMetadata(true);
+      try {
+        const updated = buildMobileMetadataEditedItem(
+          metadataEditorEntry,
+          form,
+          nextSyncTimestamp(metadataEditorEntry.item.updatedAt),
+        );
+        await store.saveLibraryItem(updated);
+        emitMobileDataChanged("library");
+        if (
+          getMobileMetadataEditorSaveResultAction({ saved: true }) === "close-sheet"
+        ) {
+          setMetadataEditorOpen(false);
+        }
+      } catch (error) {
+        if (
+          getMobileMetadataEditorSaveResultAction({ saved: false }) === "close-sheet"
+        ) {
+          setMetadataEditorOpen(false);
+        }
+        setOperationError(
+          describeMobileErrorDetail(error, strings.mangaDetail.actionFailedDetail),
+        );
+      } finally {
+        setSavingMetadata(false);
+      }
+    },
+    [metadataEditorEntry, savingMetadata, store, strings],
   );
 
   // The card's own NemuPressable already fires the long-press haptic; a
@@ -2391,6 +2557,12 @@ export function LibraryScreen({
     () => chunkMobileGridRows(gridEntries, gridColumns),
     [gridEntries, gridColumns],
   );
+  // Pagekin home: the main library (no collection) shows one big
+  // currently-reading cover over a fanned deck of the rest instead of the
+  // grid. Collection routes keep the grid — they are for managing a
+  // collection's books, not for picking what to read next.
+  const pagekinHome =
+    designExplore && !selectedCollection && !showSkeleton && gridEntries.length > 0;
   const showEmptyCollectionHero = shouldShowMobileEmptyCollectionHero({
     loading: showSkeleton,
     hasSelectedCollection: Boolean(selectedCollection),
@@ -2432,12 +2604,14 @@ export function LibraryScreen({
         collections={collections.data}
         strings={strings}
         selectedCollectionId={effectiveCollectionId}
+        defaultCollectionId={defaultCollectionId}
         disabled={collectionActionBusy}
         onClose={() => setShowTitleMenuSheet(false)}
         onDismiss={() => completeSheetDismiss("title-menu")}
         onSelect={(collectionId) => {
           selectCollection(collectionId, "title-menu");
         }}
+        onSetDefaultCollection={setDefaultCollection}
         onManage={() => {
           if (collectionActionBusy) return;
           if (
@@ -2464,6 +2638,17 @@ export function LibraryScreen({
         onClose={() => setQuickActionEntry(null)}
         onDismiss={() => setQuickActionEntry(null)}
       />
+      {metadataEditorEntry ? (
+        <MobileMetadataEditorSheet
+          visible={metadataEditorOpen}
+          entry={metadataEditorEntry}
+          saving={savingMetadata}
+          coverSource={metadataEditorCoverSource}
+          onClose={() => setMetadataEditorOpen(false)}
+          onDismiss={() => setMetadataEditorEntry(null)}
+          onSave={saveMetadataFromLibrary}
+        />
+      ) : null}
       {membershipSheetEntry ? (
         <MobileCollectionMembershipSheet
           visible
@@ -2717,7 +2902,7 @@ export function LibraryScreen({
       // An empty Library or collection is this same list with the hero as its
       // empty component: exactly as tall as the viewport, so it only rubber-bands.
       fillViewport={showEmptyOnboarding || showEmptyCollectionHero}
-      data={showSkeleton ? [] : libraryRows}
+      data={pagekinHome ? [] : showSkeleton ? [] : libraryRows}
       keyExtractor={collectionRowKey}
       renderItem={renderLibraryRow}
       // Every row glides to its new y when the sections above it change
@@ -2752,7 +2937,16 @@ export function LibraryScreen({
       windowSize={7}
       ListHeaderComponent={
         <>
-          {usesNativeHeader ? null : (
+          {pagekinHome ? (
+            <MobileLibraryPagekinHome
+              entries={gridEntries}
+              progressIndex={progressIndex}
+              cardProgress={cardProgress}
+              strings={strings}
+              installedSources={installedSources.data}
+              onEntryLongPress={(entry) => setQuickActionEntry(entry)}
+            />
+          ) : usesNativeHeader ? null : (
             <PageHeader
               title={title}
               loading={pageLoading}
