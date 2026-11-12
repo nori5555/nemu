@@ -146,6 +146,9 @@ export type MobileStrings = {
     browse: string;
     search: string;
     settings: string;
+    server: string;
+    serverLibrary: string;
+    serverSources: string;
   };
   welcome: {
     confirmSkip: string;
@@ -1109,6 +1112,47 @@ export type MobileStrings = {
     /** Shown instead of a source's content when its login is not on this device. */
     needsSignIn: string;
     reservedSourceId: string;
+  };
+  /** Browsing a Suwayomi server's own extension sources from inside Nemu. */
+  serverSourceBrowser: {
+    title: string;
+    chooseSource: string;
+    searchThisSource: string;
+    searchPlaceholder: string;
+    search: string;
+    cancelSearch: string;
+    allLanguages: string;
+    chinese: string;
+    english: string;
+    /** `{{count}}` is the number of sources after the language filter. */
+    sourceCount: string;
+    addToLibrary: string;
+    inLibrary: string;
+    addedToLibrary: string;
+    addFailed: string;
+    loadSourcesFailed: string;
+    searchFailed: string;
+    noSources: string;
+    noSourcesHint: string;
+    noResults: string;
+    noResultsHint: string;
+    typeToSearch: string;
+    searching: string;
+    searchingHint: string;
+    loadMore: string;
+    loadingMore: string;
+    unsupported: string;
+    openManga: string;
+    noServer: string;
+    noServerHint: string;
+    addServer: string;
+  };
+  /** A Suwayomi server's Library listing, as a bottom-bar tab. */
+  serverLibrary: {
+    title: string;
+    emptyLibrary: string;
+    emptyLibraryHint: string;
+    loadFailed: string;
   };
   account: {
     title: string;
