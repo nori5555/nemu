@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { router, Stack } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useInstalledSources, useMobileLanguageSettings } from "@/data/mobileHooks";
 import type { InstalledSource } from "@/data/schema";
 import {
@@ -22,6 +23,12 @@ function serverKey(source: InstalledSource): string {
 }
 
 /**
+ * Extra bottom space so content clears the floating bottom tab bar
+ * (the tabs use disableAutomaticContentInsets, so nothing adds it).
+ */
+const TAB_BAR_CLEARANCE = 96;
+
+/**
  * The bottom-bar server tabs share one gate: pick the Suwayomi server to
  * show. One server goes straight in; several get a picker row on top;
  * none gets an empty state that opens the add-server form. The child
@@ -35,6 +42,7 @@ export function SuwayomiServerTabHost({
   children: (server: InstalledSource) => ReactNode;
 }) {
   const { tokens } = useNemuTheme();
+  const insets = useSafeAreaInsets();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage).serverSourceBrowser;
   const installed = useInstalledSources();
@@ -49,12 +57,43 @@ export function SuwayomiServerTabHost({
     null;
   const nativeHeaderOptions = createNemuNativeScreenOptions(tokens, title);
 
+  // The installed-source list starts empty and loads async: while it is
+  // still loading, there is no evidence for "no server yet", so show a
+  // spinner instead of the empty state (which the tab otherwise flashes
+  // on every fresh launch).
+  if (installed.loading) {
+    return (
+      <>
+        <Stack.Screen options={{ ...nativeHeaderOptions, title }} />
+        <View
+          style={[
+            styles.emptyRoot,
+            {
+              backgroundColor: tokens.background,
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom + TAB_BAR_CLEARANCE,
+            },
+          ]}
+        >
+          <ActivityIndicator />
+        </View>
+      </>
+    );
+  }
+
   if (!selected) {
     return (
       <>
         <Stack.Screen options={{ ...nativeHeaderOptions, title }} />
         <View
-          style={[styles.emptyRoot, { backgroundColor: tokens.background }]}
+          style={[
+            styles.emptyRoot,
+            {
+              backgroundColor: tokens.background,
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom + TAB_BAR_CLEARANCE,
+            },
+          ]}
         >
           <NemuInlineEmptyState
             icon="cloud-offline"
@@ -76,7 +115,7 @@ export function SuwayomiServerTabHost({
   return (
     <View style={[styles.root, { backgroundColor: tokens.background }]}>
       {servers.length > 1 ? (
-        <View style={styles.picker}>
+        <View style={[styles.picker, { paddingTop: insets.top + 12 }]}>
           <ScrollView
             horizontal
             scrollsToTop={false}
@@ -119,7 +158,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   picker: {
-    paddingTop: 12,
+    paddingBottom: 4,
   },
   pickerContent: {
     gap: 8,
