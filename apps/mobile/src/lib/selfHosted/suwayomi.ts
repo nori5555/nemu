@@ -3,6 +3,7 @@ import type {
   SelfHostedBackend,
   SelfHostedPageRef,
   SelfHostedSource,
+  SelfHostedSourceBrowseType,
   SelfHostedSourceBrowser,
 } from "./backend";
 import { SelfHostedError, basicAuthHeader, buildUrl, errorForStatus, parseJson, type SelfHostedTransport } from "./http";
@@ -59,6 +60,15 @@ const STATUS: Record<string, 0 | 1 | 2 | 3 | 4> = {
 };
 
 const MANGA_FIELDS = "id title author artist description genre status thumbnailUrl";
+
+/** A manga's server id as an integer; the updateManga mutation needs an Int. */
+function suwayomiMangaId(manga: { key: string }): number {
+  const id = Number(manga.key);
+  if (!Number.isInteger(id)) {
+    throw new SelfHostedError("invalid-response", `Not a Suwayomi manga id: ${manga.key}`);
+  }
+  return id;
+}
 
 export type SuwayomiBackendOptions = {
   server: string;
@@ -209,13 +219,44 @@ export function createSuwayomiBackend(options: SuwayomiBackendOptions): SelfHost
       };
     },
 
+    /**
+     * A source's POPULAR / LATEST listing: the same fetchSourceManga call
+     * as a search, but with no query — the server returns the source's own
+     * popular or latest page instead of matches.
+     */
+    async browseSource(
+      sourceId,
+      type: SelfHostedSourceBrowseType,
+      page,
+      signal,
+    ): Promise<MangaPageResult> {
+      const data = await gql<{
+        fetchSourceManga: { mangas: GqlManga[]; hasNextPage: boolean };
+      }>(
+        `mutation($source:LongString!,$page:Int!){
+          fetchSourceManga(input:{source:$source,type:${type},page:$page}){
+            mangas{${MANGA_FIELDS}} hasNextPage}}`,
+        { source: sourceId, page: Math.max(page, 1) },
+        signal,
+      );
+      return {
+        entries: data.fetchSourceManga.mangas.map(mapManga),
+        hasNextPage: data.fetchSourceManga.hasNextPage,
+      };
+    },
+
     async addMangaToLibrary(manga): Promise<void> {
-      const id = Number(manga.key);
-      if (!Number.isInteger(id)) {
-        throw new SelfHostedError("invalid-response", `Not a Suwayomi manga id: ${manga.key}`);
-      }
+      const id = suwayomiMangaId(manga);
       await gql<{ updateManga: { manga: { id: number; title: string; inLibrary: boolean } } }>(
         `mutation($id:Int!){updateManga(input:{id:$id,patch:{inLibrary:true}}){manga{id title inLibrary}}}`,
+        { id },
+      );
+    },
+
+    async removeMangaFromLibrary(manga): Promise<void> {
+      const id = suwayomiMangaId(manga);
+      await gql<{ updateManga: { manga: { id: number; title: string; inLibrary: boolean } } }>(
+        `mutation($id:Int!){updateManga(input:{id:$id,patch:{inLibrary:false}}){manga{id title inLibrary}}}`,
         { id },
       );
     },

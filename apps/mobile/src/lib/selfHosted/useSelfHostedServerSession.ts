@@ -3,24 +3,14 @@ import { useMobileDataStore } from "@/data/mobileDataContext";
 import { useSourceSettings } from "@/data/mobileHooks";
 import type { InstalledSource } from "@/data/schema";
 import { getMobileInstalledSourceSettingsKeys } from "@/lib/mobileInstalledSourceKeys";
+import { makeMobileSourceKey } from "@/lib/mobileSourceSettings";
+import { normalizeInstalledSource } from "@/sources/mobileSourceRuntime";
 import {
-  loadMobileSourceSettingsByKeys,
-  makeMobileSourceKey,
-  mergeSourceSettingValues,
-} from "@/lib/mobileSourceSettings";
-import {
-  defaultMobileSourceSessionCache,
-} from "@/sources/mobileSourceExecutorCache";
-import type { MobileSourceExecutorSession } from "@/sources/mobileSourceExecutor";
-import {
-  makeMobileRuntimeSourceKey,
-  normalizeInstalledSource,
-} from "@/sources/mobileSourceRuntime";
+  runWithSuwayomiServerSession,
+  type SelfHostedReadySession,
+} from "./serverSession";
 
-export type SelfHostedReadySession = Extract<
-  MobileSourceExecutorSession,
-  { status: "ready" }
->;
+export type { SelfHostedReadySession };
 
 /**
  * Run calls against the cached executor session for one installed server.
@@ -56,27 +46,11 @@ export function useSelfHostedServerSession(
   }, [liveSourceSettings.data]);
 
   const runWithSession = useCallback(
-    async <T,>(fn: (session: SelfHostedReadySession) => Promise<T>): Promise<T> => {
-      if (!installedSource) throw new Error(unsupportedMessage);
-      const normalized = normalizeInstalledSource(installedSource);
-      const runtimeSourceKey = makeMobileRuntimeSourceKey(normalized);
-      const saved = await loadMobileSourceSettingsByKeys(store, [
-        runtimeSourceKey,
-        ...getMobileInstalledSourceSettingsKeys(installedSource),
-      ]);
-      const settings = mergeSourceSettingValues(
-        installedSource.packageMetadata?.settings ?? [],
-        saved?.values ?? liveSourceSettingsRef.current,
-      );
-      return defaultMobileSourceSessionCache.withSession(
-        normalized,
-        { settings },
-        async (session) => {
-          if (session.status === "blocked") throw new Error(session.detail);
-          return fn(session);
-        },
-      );
-    },
+    async <T,>(fn: (session: SelfHostedReadySession) => Promise<T>): Promise<T> =>
+      runWithSuwayomiServerSession(store, installedSource, fn, {
+        unsupportedMessage,
+        fallbackSettings: liveSourceSettingsRef.current,
+      }),
     [installedSource, store, unsupportedMessage],
   );
 

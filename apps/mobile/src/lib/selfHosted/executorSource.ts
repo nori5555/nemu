@@ -116,12 +116,31 @@ export function createSelfHostedExecutorSource(input: SelfHostedExecutorInput): 
               }
               return backend.searchSource(sourceId, query, page, signal);
             }),
+          browseSource: (
+            sourceId: string,
+            type: "POPULAR" | "LATEST",
+            page: number,
+            signal?: AbortSignal,
+          ) =>
+            localized((backend) => {
+              if (!hasSelfHostedSourceBrowser(backend)) {
+                throw new SelfHostedError("unsupported", "This server does not support browsing sources.");
+              }
+              return backend.browseSource(sourceId, type, page, signal);
+            }),
           addToLibrary: (manga: Manga) =>
             localized((backend) => {
               if (!hasSelfHostedSourceBrowser(backend)) {
                 throw new SelfHostedError("unsupported", "This server does not support browsing sources.");
               }
               return backend.addMangaToLibrary(manga);
+            }),
+          removeMangaFromLibrary: (manga: Manga) =>
+            localized((backend) => {
+              if (!hasSelfHostedSourceBrowser(backend)) {
+                throw new SelfHostedError("unsupported", "This server does not support browsing sources.");
+              }
+              return backend.removeMangaFromLibrary(manga);
             }),
         }
       : {}),

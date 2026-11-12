@@ -142,4 +142,46 @@ describe("suwayomi backend", () => {
     expect(json.variables).toEqual({ id: 987 });
     expect(typeof json.variables.id).toBe("number");
   });
+
+  test("removes a manga from the library by its integer id", async () => {
+    const { transport, seen } = gqlServer(() => fixture("updateManga.json"));
+    const backend = createSuwayomiBackend({ server: SERVER, credentials: {}, transport });
+    await backend.removeMangaFromLibrary({ key: "987", title: "特聘公务员" });
+    const json = seen[0]?.json as { query: string; variables: Record<string, unknown> };
+    expect(json.query).toContain("updateManga");
+    expect(json.query).toContain("inLibrary:false");
+    expect(json.variables).toEqual({ id: 987 });
+    expect(typeof json.variables.id).toBe("number");
+  });
+
+  test("browses a source's popular page with no query variable", async () => {
+    const { transport, seen } = gqlServer(() => fixture("fetchSourceManga.json"));
+    const backend = createSuwayomiBackend({ server: SERVER, credentials: {}, transport });
+    const result = await backend.browseSource("2496529850991657881", "POPULAR", 1);
+    expect(result.hasNextPage).toBe(true);
+    expect(result.entries.map((entry) => entry.key)).toEqual(["987", "988"]);
+    expect(result.entries[0]).toMatchObject({
+      title: "特聘公务员",
+      description: "A hired civil servant.",
+      tags: ["Action"],
+    });
+    const json = seen[0]?.json as { query: string; variables: Record<string, unknown> };
+    expect(json.query).toContain("fetchSourceManga");
+    expect(json.query).toContain("type:POPULAR");
+    expect(json.variables).toEqual({ source: "2496529850991657881", page: 1 });
+    expect("query" in json.variables).toBe(false);
+  });
+
+  test("browses a source's latest page with no query variable", async () => {
+    const { transport, seen } = gqlServer(() => fixture("fetchSourceManga.json"));
+    const backend = createSuwayomiBackend({ server: SERVER, credentials: {}, transport });
+    const result = await backend.browseSource("2496529850991657881", "LATEST", 2);
+    expect(result.hasNextPage).toBe(true);
+    expect(result.entries.map((entry) => entry.key)).toEqual(["987", "988"]);
+    const json = seen[0]?.json as { query: string; variables: Record<string, unknown> };
+    expect(json.query).toContain("fetchSourceManga");
+    expect(json.query).toContain("type:LATEST");
+    expect(json.variables).toEqual({ source: "2496529850991657881", page: 2 });
+    expect("query" in json.variables).toBe(false);
+  });
 });

@@ -28,6 +28,8 @@ export type SelfHostedSource = {
   lang: string;
 };
 
+export type SelfHostedSourceBrowseType = "POPULAR" | "LATEST";
+
 /**
  * Optional capability: browse the server's own extension sources and search
  * inside one of them. Only Suwayomi implements it; Komga/Kavita have no
@@ -42,7 +44,19 @@ export interface SelfHostedSourceBrowser {
     page: number,
     signal?: AbortSignal,
   ): Promise<MangaPageResult>;
+  /**
+   * A source's listing without a query: POPULAR is the source's popular
+   * page, LATEST its latest page. Same fetchSourceManga call as a search,
+   * only with no query variable.
+   */
+  browseSource(
+    sourceId: string,
+    type: SelfHostedSourceBrowseType,
+    page: number,
+    signal?: AbortSignal,
+  ): Promise<MangaPageResult>;
   addMangaToLibrary(manga: Manga): Promise<void>;
+  removeMangaFromLibrary(manga: Manga): Promise<void>;
 }
 
 export function hasSelfHostedSourceBrowser(
@@ -52,7 +66,9 @@ export function hasSelfHostedSourceBrowser(
   return (
     typeof candidate.listSources === "function" &&
     typeof candidate.searchSource === "function" &&
-    typeof candidate.addMangaToLibrary === "function"
+    typeof candidate.browseSource === "function" &&
+    typeof candidate.addMangaToLibrary === "function" &&
+    typeof candidate.removeMangaFromLibrary === "function"
   );
 }
 
