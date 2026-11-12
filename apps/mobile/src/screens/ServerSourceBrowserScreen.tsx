@@ -53,6 +53,7 @@ import {
 } from "@/lib/mobileSourceRoutes";
 import {
   filterServerSourcesByLanguage,
+  filterServerSourcesToReadableLanguages,
   isSuwayomiServerSource,
 } from "@/lib/selfHosted/serverSources";
 import type { SelfHostedSource } from "@/lib/selfHosted/backend";
@@ -263,9 +264,14 @@ export function ServerSourceBrowserScreen({
 
   // Every source in one scrolling row: the language filter row used to sit
   // above it (中文/英文/全部语言), but three rows of options before any
-  // content was too much — with 20 sources the single row is enough.
+  // content was too much. Only Chinese, English and Japanese sources are
+  // shown — the long tail of other languages on the server is never read,
+  // and it would crowd both this row and the aggregated search.
   const sources = useMemo(
-    () => (sourcesState.status === "ready" ? sourcesState.sources : []),
+    () =>
+      sourcesState.status === "ready"
+        ? filterServerSourcesToReadableLanguages(sourcesState.sources)
+        : [],
     [sourcesState],
   );
   const selectedSource = useMemo(
