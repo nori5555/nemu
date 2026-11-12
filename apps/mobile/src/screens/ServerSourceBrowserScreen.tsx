@@ -52,6 +52,7 @@ import {
   normalizeMobileSourceRouteParam,
 } from "@/lib/mobileSourceRoutes";
 import {
+  filterServerSourcesByLanguage,
   isSuwayomiServerSource,
 } from "@/lib/selfHosted/serverSources";
 import type { SelfHostedSource } from "@/lib/selfHosted/backend";
@@ -69,14 +70,32 @@ type SourcesState =
 
 type SearchState =
   | { status: "idle" }
-  | { status: "loading"; items: MobileLiveSearchManga[]; page: number }
+  | {
+      status: "loading";
+      items: ServerBrowserSearchItem[];
+      page: number;
+      /** Sources that have answered so far (aggregated search shows progress). */
+      doneSources: number;
+      totalSources: number;
+    }
   | {
       status: "ready";
-      items: MobileLiveSearchManga[];
+      items: ServerBrowserSearchItem[];
       page: number;
       hasMore: boolean;
     }
-  | { status: "error"; items: MobileLiveSearchManga[]; detail: string };
+  | { status: "error"; items: ServerBrowserSearchItem[]; detail: string };
+
+/**
+ * A search hit tagged with the extension source it came from: the server
+ * identifies a manga by one id across sources, so the same title can
+ * appear once per source — the tag is what tells them apart in the grid
+ * and what makes each row's FlatList key unique.
+ */
+type ServerBrowserSearchItem = MobileLiveSearchManga & {
+  sourceId: string;
+  sourceName: string;
+};
 
 type HomeSectionState =
   | { status: "idle" }
@@ -119,22 +138,34 @@ const UPDATES_GLASS_TINT_DARK = "rgba(255,255,255,0.14)";
 
 /**
  * Browse a Suwayomi server's own extension sources from inside Nemu: pick
- * a source, browse its popular/latest pages or search inside it, add a
- * match to the Library, or open its detail page. This never touches the
- * global search (which still searches the Library); it is a separate entry
- * from a Suwayomi source's browse page.
+ * a source, browse its popular/latest pages, add a match to the Library,
+ * or open its detail page. This never touches the global search (which
+ * still searches the Library); it is a separate entry from a Suwayomi
+ * source's browse page.
  *
- * A source search is slow by nature — the server fetches the source live,
- * 5–60s — so it only runs from the Search button, with a Cancel button that
- * aborts the request, and never per keystroke.
+ * Search is aggregated: one query goes to every source on the server in
+ * parallel (the server has no cross-source search of its own — the
+ * WebUI does the same fan-out), and hits stream in source by source,
+ * each card labelled with its source. A source that errors or needs a
+ * login just contributes nothing; only when every source fails does the
+ * search itself report an error. A source search is slow by nature —
+ * the server fetches the source live, 5–60s — so it only runs from the
+ * Search button, with a Cancel button that aborts every in-flight
+ * request, and never per keystroke. Load-more fetches the next page
+ * from every source and appends it.
+ *
+ * The home page is a source, not an empty state: once the source list
+ * loads, the first Chinese source (else the first source) is selected
+ * automatically and its home sections load.
  *
  * The layout follows the MangaDex-style reference (a featured carousel
- * plus a latest-updates list), and every surface is Nemu's own Liquid
- * Glass: the chips are ExploreGlassChip, the mode row is three
- * ExploreGlassButtons (the selected one tinted with the primary colour),
- * and the featured card and the updates list are ExploreGlass panels —
- * not the reference's dark solid pills and cards, and not the flat
- * BlurView surface, which reads as a solid dark card on this page.
+ * plus a latest-updates list), and every surface is Nemu's own: the chips
+ * are ExploreGlassChip, the mode row is three ExploreGlassButtons (the
+ * selected one tinted with the primary colour), the featured card is
+ * tinted from its cover like the Explore home's, and the updates list
+ * is an ExploreGlass panel — not the reference's dark solid pills and
+ * cards, and not the flat BlurView surface, which reads as a solid dark
+ * card on this page.
  */
 export function ServerSourceBrowserScreen({
   registryId: registryIdProp,
@@ -359,6 +390,18 @@ export function ServerSourceBrowserScreen({
     [loadMode, mode],
   );
 
+  // The home page is a source, not an empty state: once the list loads,
+  // select one by default — the first Chinese source, else the first
+  // source overall — and load its home sections. Only the first load
+  // does this; afterwards the user's own pick stays.
+  useEffect(() => {
+    if (sourcesState.status !== "ready" || selectedSourceId) return;
+    const preferred =
+      filterServerSourcesByLanguage(sourcesState.sources, "zh")[0] ??
+      sourcesState.sources[0];
+    if (preferred) selectSource(preferred);
+  }, [sourcesState, selectedSourceId, selectSource]);
+
   const handleModeChange = useCallback(
     (nextMode: BrowseMode) => {
       if (nextMode === mode) return;
@@ -377,51 +420,88 @@ export function ServerSourceBrowserScreen({
 
   const runSearch = useCallback(
     async (page: number, append: boolean) => {
-      if (!selectedSource) return;
       const trimmedQuery = query.trim();
-      if (!trimmedQuery) return;
+      if (!trimmedQuery || sources.length === 0) return;
       searchAbortRef.current?.abort();
       const controller = new AbortController();
       searchAbortRef.current = controller;
       const requestId = ++searchRequestRef.current;
       const previousItems =
         append && searchState.status !== "idle" ? searchState.items : [];
-      setSearchState({ status: "loading", items: previousItems, page });
-      try {
-        const result = await runWithSession(async (session) => {
-          if (!session.source.searchServerSource) {
-            throw new Error(strings.unsupported);
+      setSearchState({
+        status: "loading",
+        items: previousItems,
+        page,
+        doneSources: 0,
+        totalSources: sources.length,
+      });
+      let anyMore = false;
+      let firstError: Error | null = null;
+      // One query to every source in parallel; each source's hits are
+      // appended the moment they arrive, so fast sources show first and
+      // a slow or dead one never blocks the rest. A source that errors
+      // (login-required, site down) just contributes nothing.
+      await Promise.all(
+        sources.map(async (source) => {
+          try {
+            const result = await runWithSession(async (session) => {
+              if (!session.source.searchServerSource) {
+                throw new Error(strings.unsupported);
+              }
+              const pageResult = await session.source.searchServerSource(
+                source.id,
+                trimmedQuery,
+                page,
+                controller.signal,
+              );
+              const items = await mapAidokuMangasToLiveSearchMangaWithImageRequests(
+                session.source,
+                pageResult.entries,
+                { signal: controller.signal },
+              );
+              return { items, hasMore: pageResult.hasNextPage };
+            });
+            if (requestId !== searchRequestRef.current || controller.signal.aborted) return;
+            if (result.hasMore) anyMore = true;
+            const tagged: ServerBrowserSearchItem[] = result.items.map((item) => ({
+              ...item,
+              sourceId: source.id,
+              sourceName: source.name,
+            }));
+            setSearchState((current) =>
+              current.status === "loading"
+                ? {
+                    ...current,
+                    items: [...current.items, ...tagged],
+                    doneSources: current.doneSources + 1,
+                  }
+                : current,
+            );
+          } catch (error) {
+            if (requestId !== searchRequestRef.current || controller.signal.aborted) return;
+            if (!firstError && error instanceof Error) firstError = error;
+            setSearchState((current) =>
+              current.status === "loading"
+                ? { ...current, doneSources: current.doneSources + 1 }
+                : current,
+            );
           }
-          const pageResult = await session.source.searchServerSource(
-            selectedSource.id,
-            trimmedQuery,
-            page,
-            controller.signal,
-          );
-          const items = await mapAidokuMangasToLiveSearchMangaWithImageRequests(
-            session.source,
-            pageResult.entries,
-            { signal: controller.signal },
-          );
-          return { items, hasMore: pageResult.hasNextPage };
-        });
-        if (requestId !== searchRequestRef.current || controller.signal.aborted) return;
-        setSearchState({
-          status: "ready",
-          items: [...previousItems, ...result.items],
-          page,
-          hasMore: result.hasMore,
-        });
-      } catch (error) {
-        if (requestId !== searchRequestRef.current || controller.signal.aborted) return;
-        setSearchState({
-          status: "error",
-          items: previousItems,
-          detail: error instanceof Error ? error.message : String(error),
-        });
-      }
+        }),
+      );
+      if (requestId !== searchRequestRef.current || controller.signal.aborted) return;
+      setSearchState((current) => {
+        const items = current.status === "loading" ? current.items : previousItems;
+        if (items.length === 0) {
+          return {
+            status: "error",
+            items: [],
+            detail: firstError ? firstError.message : strings.searchFailed,
+          };
+        }
+        return { status: "ready", items, page, hasMore: anyMore };
+      });
     },
-    [query, runWithSession, searchState, selectedSource, strings.unsupported],
+    [query, runWithSession, searchState, sources, strings.searchFailed, strings.unsupported],
   );
 
   const submitSearch = useCallback(() => {
@@ -567,7 +647,7 @@ export function ServerSourceBrowserScreen({
   }, [libraryEntries, searchItems, sourceDisplay]);
 
   const renderResult = useCallback(
-    ({ item }: { item: MobileLiveSearchManga }) => {
+    ({ item }: { item: MobileLiveSearchManga & { sourceName?: string } }) => {
       const added = addedKeys.has(item.id);
       const adding = addingKeys.has(item.id);
       return (
@@ -575,6 +655,7 @@ export function ServerSourceBrowserScreen({
           <ServerMangaGridCard
             item={item}
             openLabel={strings.openManga}
+            sourceLabel={item.sourceName}
             onPress={() => openManga(item)}
           />
           <NemuButton
@@ -659,6 +740,7 @@ export function ServerSourceBrowserScreen({
               horizontal
               scrollsToTop={false}
               showsHorizontalScrollIndicator={false}
+              style={styles.sourceScroll}
               contentContainerStyle={styles.sourceList}
             >
               {sources.map((source) => (
@@ -699,12 +781,12 @@ export function ServerSourceBrowserScreen({
                 })}
               </View>
               <NemuText style={[styles.sectionLabel, { color: tokens.mutedForeground }]}>
-                {strings.searchThisSource}
+                {strings.searchAllSources}
               </NemuText>
               <View style={styles.searchRow}>
                 <ExploreGlass cornerRadius={0} style={styles.searchGlass}>
                   <TextInput
-                    accessibilityLabel={strings.searchThisSource}
+                    accessibilityLabel={strings.searchAllSources}
                     autoCapitalize="none"
                     autoCorrect={false}
                     onChangeText={setQuery}
@@ -740,7 +822,12 @@ export function ServerSourceBrowserScreen({
                 <View style={styles.searchingRow}>
                   <ActivityIndicator size="small" />
                   <NemuText style={[styles.searchingText, { color: tokens.mutedForeground }]}>
-                    {strings.searchingHint}
+                    {searchState.status === "loading"
+                      ? formatMobileString(strings.searchingProgress, {
+                          done: searchState.doneSources,
+                          total: searchState.totalSources,
+                        })
+                      : strings.searchingHint}
                   </NemuText>
                 </View>
               ) : null}
@@ -887,7 +974,12 @@ export function ServerSourceBrowserScreen({
         <FlatList
           key={showRows ? "rows" : "grid"}
           data={listItems}
-          keyExtractor={(item) => item.id}
+          // One manga id is shared across sources, so a title found in
+          // two sources needs a composite key or the rows collide.
+          keyExtractor={(item) => {
+            const sourceId = (item as Partial<ServerBrowserSearchItem>).sourceId;
+            return sourceId ? `${sourceId}:${item.id}` : item.id;
+          }}
           renderItem={showRows ? renderUpdateRow : renderResult}
           numColumns={showRows ? 1 : 3}
           columnWrapperStyle={showRows ? undefined : styles.resultRow}
@@ -1111,9 +1203,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginLeft: "auto",
   },
+  // The source row bleeds to the screen edges like the featured
+  // carousel: without the negative margin the list's 16pt content
+  // padding clips the chips a full inset short of the edge, so the
+  // last chip is cut off before it ever reaches the screen edge.
+  sourceScroll: {
+    marginHorizontal: -16,
+  },
   sourceList: {
     gap: 8,
-    paddingRight: 8,
+    paddingHorizontal: 16,
   },
   modeRow: {
     flexDirection: "row",
