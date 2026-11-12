@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Stack } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReaderSegmentedChipRow } from "@/components/reader/ReaderSegmentedChipRow";
 import { useInstalledSources, useMobileLanguageSettings } from "@/data/mobileHooks";
 import {
@@ -29,6 +30,7 @@ export function ServerScreen({
   sourceId?: string;
 }) {
   const { tokens } = useNemuTheme();
+  const insets = useSafeAreaInsets();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage);
   const installed = useInstalledSources();
@@ -53,7 +55,7 @@ export function ServerScreen({
     <>
       <Stack.Screen options={{ ...nativeHeaderOptions, title: screenTitle }} />
       <View style={[styles.root, { backgroundColor: tokens.background }]}>
-        <View style={styles.segments}>
+        <View style={[styles.segments, { paddingTop: insets.top + 12 }]}>
           <ReaderSegmentedChipRow<ServerPage>
             accessibilityLabel={strings.nav.server}
             options={[
@@ -85,7 +87,6 @@ const styles = StyleSheet.create({
   },
   segments: {
     paddingHorizontal: 16,
-    paddingTop: 12,
     paddingBottom: 4,
   },
   page: {
