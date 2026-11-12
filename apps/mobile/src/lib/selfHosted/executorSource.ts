@@ -4,6 +4,7 @@ import { makeMobileSourceExecutionKey } from "@/sources/mobileSourceProfileScope
 import type { Chapter, FilterValue, Listing, Manga } from "@/sources/aidokuContract";
 import { createSelfHostedBackend } from "./backends";
 import type { SelfHostedBackend } from "./backend";
+import { hasSelfHostedSourceBrowser } from "./backend";
 import { createNativeTransport, type SelfHostedTransport } from "./http";
 import { registerSelfHostedImageUrl } from "./imageScopes";
 import { getSelfHostedLanguage } from "./language";
@@ -95,6 +96,35 @@ export function createSelfHostedExecutorSource(input: SelfHostedExecutorInput): 
     },
     getFilters: async () => current().getFilters(),
     getListings: (): Promise<Listing[]> => localized((backend) => backend.getListings()),
+    // Server-source browsing is a Suwayomi-only capability: the methods
+    // exist on this executor only when the saved server is a Suwayomi one,
+    // so Komga/Kavita executors keep them `undefined` and the UI hides the
+    // entry. Inside, the guard is a second line of defence.
+    ...(config?.kind === "suwayomi"
+      ? {
+          getServerSources: () =>
+            localized((backend) => {
+              if (!hasSelfHostedSourceBrowser(backend)) {
+                throw new SelfHostedError("unsupported", "This server does not support browsing sources.");
+              }
+              return backend.listSources();
+            }),
+          searchServerSource: (sourceId: string, query: string, page: number, signal?: AbortSignal) =>
+            localized((backend) => {
+              if (!hasSelfHostedSourceBrowser(backend)) {
+                throw new SelfHostedError("unsupported", "This server does not support browsing sources.");
+              }
+              return backend.searchSource(sourceId, query, page, signal);
+            }),
+          addToLibrary: (manga: Manga) =>
+            localized((backend) => {
+              if (!hasSelfHostedSourceBrowser(backend)) {
+                throw new SelfHostedError("unsupported", "This server does not support browsing sources.");
+              }
+              return backend.addMangaToLibrary(manga);
+            }),
+        }
+      : {}),
     getMangaListForListing: (listing: Listing, page: number) =>
       localized((backend) => backend.getMangaListForListing(listing, page)),
     hasListingProvider: async () => true,
