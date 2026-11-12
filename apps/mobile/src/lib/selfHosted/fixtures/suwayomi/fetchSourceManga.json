@@ -1,0 +1,1 @@
+{"data":{"fetchSourceManga":{"hasNextPage":true,"mangas":[{"artist":null,"author":"Author A","description":"A hired civil servant.","genre":["Action"],"id":987,"status":"ONGOING","thumbnailUrl":"/api/v1/manga/987/thumbnail","title":"特聘公务员"},{"artist":null,"author":null,"description":null,"genre":[],"id":988,"status":"COMPLETED","thumbnailUrl":null,"title":"特聘公务员外传"}]}}}
