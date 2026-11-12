@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Image, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -21,6 +21,7 @@ import {
   useMobileExploreEntryCover,
 } from "@/components/explore/mobileExploreCover";
 import { getEntryTitle, type InstalledSource, type LibraryEntry } from "@/data/schema";
+import pagekinCoverGrain from "../../assets/pagekin-cover-grain.png";
 import type { MobileStrings } from "@/lib/mobileI18n";
 import {
   mobileLibraryReadFraction,
@@ -39,11 +40,14 @@ type PagekinCoverSource = ReturnType<typeof useMobileExploreEntryCover>;
 
 const FEATURED_COVER_WIDTH_RATIO = 0.54;
 const FEATURED_COVER_MAX_WIDTH = 240;
+// Paper grain over the featured cover only: a tileable noise tile at low
+// opacity breaks up the smooth upscaling blur of a small source cover,
+// the way a printed cover's grain does. The fan covers stay clean.
+const FEATURED_GRAIN_OPACITY = 0.15;
 const FAN_CARD_WIDTH_RATIO = 0.3;
 const FAN_CARD_OVERLAP_RATIO = 0.34;
 const FAN_TILT_DEGREES = 9;
 const FAN_ARC_DROP = 7;
-const FAN_MASK_MAX_OPACITY = 0.55;
 const FAN_CONTENT_PADDING = 20;
 // Room for the floating tab bar, as the server browser's clearance.
 const PAGEKIN_BOTTOM_CLEARANCE = 96;
@@ -128,10 +132,7 @@ const PagekinFanCard = memo(function PagekinFanCard({
   onEntryLongPress?: (entry: LibraryEntry) => void;
 }) {
   // The card's centre in content coordinates: rotation is 0 when it sits at
-  // the viewport centre and tilts outward toward either edge. The same
-  // distance drives a dark mask: the centred cover stays bright while the
-  // covers sliding off to the sides dim, as on the Shushan discover page —
-  // the dimming also hides how soft their small source covers are.
+  // the viewport centre and tilts outward toward either edge.
   const center = contentPad + index * (cardWidth * (1 - FAN_CARD_OVERLAP_RATIO)) + cardWidth / 2;
   const tilt = useAnimatedStyle(() => {
     const rotate = interpolate(
@@ -147,15 +148,6 @@ const PagekinFanCard = memo(function PagekinFanCard({
       Extrapolation.CLAMP,
     );
     return { transform: [{ rotate: `${rotate}deg` }, { translateY }] };
-  });
-  const mask = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      scrollX.value,
-      [center - viewportWidth, center - viewportWidth / 2, center],
-      [FAN_MASK_MAX_OPACITY, 0, FAN_MASK_MAX_OPACITY],
-      Extrapolation.CLAMP,
-    );
-    return { opacity };
   });
   return (
     <Animated.View
@@ -174,34 +166,17 @@ const PagekinFanCard = memo(function PagekinFanCard({
         },
       ]}
     >
-      <View style={{ position: "relative" }}>
-        <PagekinCover
-          entry={entry}
-          installedSources={installedSources}
-          width={cardWidth}
-          radius={10}
-          zoomId={`pagekin-fan:${entry.item.libraryItemId}`}
-          onOpen={(opened, cover) =>
-            openPagekinEntry(opened, cover, `pagekin-fan:${opened.item.libraryItemId}`)
-          }
-          onLongPress={onEntryLongPress}
-        />
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            mask,
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: "#000000",
-              borderRadius: 10,
-            },
-          ]}
-        />
-      </View>
+      <PagekinCover
+        entry={entry}
+        installedSources={installedSources}
+        width={cardWidth}
+        radius={10}
+        zoomId={`pagekin-fan:${entry.item.libraryItemId}`}
+        onOpen={(opened, cover) =>
+          openPagekinEntry(opened, cover, `pagekin-fan:${opened.item.libraryItemId}`)
+        }
+        onLongPress={onEntryLongPress}
+      />
     </Animated.View>
   );
 });
@@ -265,17 +240,33 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
             elevation: 8,
           })}
         >
-          <PagekinCover
-            entry={featured}
-            installedSources={installedSources}
-            width={featuredWidth}
-            radius={14}
-            zoomId={`pagekin-featured:${featured.item.libraryItemId}`}
-            onOpen={(opened, cover) =>
-              openPagekinEntry(opened, cover, `pagekin-featured:${opened.item.libraryItemId}`)
-            }
-            onLongPress={onEntryLongPress}
-          />
+          <View style={{ position: "relative" }}>
+            <PagekinCover
+              entry={featured}
+              installedSources={installedSources}
+              width={featuredWidth}
+              radius={14}
+              zoomId={`pagekin-featured:${featured.item.libraryItemId}`}
+              onOpen={(opened, cover) =>
+                openPagekinEntry(opened, cover, `pagekin-featured:${opened.item.libraryItemId}`)
+              }
+              onLongPress={onEntryLongPress}
+            />
+            <Image
+              source={pagekinCoverGrain}
+              resizeMode="repeat"
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: 14,
+                opacity: FEATURED_GRAIN_OPACITY,
+              }}
+            />
+          </View>
         </View>
         {featured.item.metadata.authors?.[0] ? (
           <NemuText color={tokens.mutedForeground} numberOfLines={1} style={styles.author}>
