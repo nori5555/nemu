@@ -32,6 +32,10 @@ import { buildMobileCoverTintPalette } from "@/lib/mobileCoverTint";
 import { MOBILE_EXPLORE_RADIUS as R, concentricMobileExploreRadius } from "@/lib/mobileExploreRadius";
 import { useMobileCoverTint } from "@/lib/useMobileCoverTint";
 import { ServerMangaGridCard } from "@/components/ServerMangaGridCard";
+import {
+  ZoomSource,
+  zoomTransitionAvailable,
+} from "../../modules/nemu-window-layout";
 import { useMobileDataStore } from "@/data/mobileDataContext";
 import { emitMobileDataChanged } from "@/data/mobileDataEvents";
 import {
@@ -542,8 +546,18 @@ export function ServerSourceBrowserScreen({
     });
   }, [browseState, mode, runBrowse, selectedSource]);
 
+  // Design-explore: a result cover zooms into the detail page, the same
+  // native transition the library grid and search already use. The id must
+  // match the one the detail route is opened with, or UIKit finds no source
+  // to zoom from.
+  const zoomIdFor = useCallback(
+    (item: MobileLiveSearchManga) =>
+      `server:${registryId}:${sourceId}:${item.id}`,
+    [registryId, sourceId],
+  );
+
   const openManga = useCallback(
-    (item: MobileLiveSearchManga) => {
+    (item: MobileLiveSearchManga, zoomId: string | null = null) => {
       setMobileSourceDetailSeed(registryId, sourceId, item.id, item);
       router.push(
         getMobileSourceMangaHref({
@@ -551,6 +565,7 @@ export function ServerSourceBrowserScreen({
           sourceId,
           mangaId: item.id,
           mangaTitle: item.title,
+          zoom: zoomId && zoomTransitionAvailable ? zoomId : null,
         }),
       );
     },
@@ -662,7 +677,8 @@ export function ServerSourceBrowserScreen({
             item={item}
             openLabel={strings.openManga}
             sourceLabel={item.sourceName}
-            onPress={() => openManga(item)}
+            zoomId={zoomTransitionAvailable ? zoomIdFor(item) : null}
+            onPress={() => openManga(item, zoomIdFor(item))}
           />
           <NemuButton
             accessibilityLabel={`${added ? strings.inLibrary : strings.addToLibrary}: ${item.title}`}
@@ -676,7 +692,7 @@ export function ServerSourceBrowserScreen({
         </View>
       );
     },
-    [addedKeys, addingKeys, addToLibrary, openManga, strings],
+    [addedKeys, addingKeys, addToLibrary, openManga, strings, zoomIdFor],
   );
 
   const renderUpdateRow = useCallback(
@@ -887,7 +903,8 @@ export function ServerSourceBrowserScreen({
                   key={item.id}
                   item={item}
                   width={featuredCardWidth}
-                  onPress={() => openManga(item)}
+                  zoomId={zoomTransitionAvailable ? zoomIdFor(item) : null}
+                  onPress={() => openManga(item, zoomIdFor(item))}
                 />
               ))}
             </ScrollView>
@@ -1007,6 +1024,8 @@ type ServerSourceFeaturedCardProps = {
   item: MobileLiveSearchManga;
   width: number;
   onPress: () => void;
+  /** Design-explore: the cover zooms into the detail page. */
+  zoomId?: string | null;
 };
 
 /**
@@ -1017,7 +1036,7 @@ type ServerSourceFeaturedCardProps = {
  * and cover corners follow the Explore scale (card 26, cover concentric
  * at 14), not the small 8pt cover radius the previous version had.
  */
-function ServerSourceFeaturedCard({ item, width, onPress }: ServerSourceFeaturedCardProps) {
+function ServerSourceFeaturedCard({ item, width, onPress, zoomId }: ServerSourceFeaturedCardProps) {
   const { scheme } = useNemuTheme();
   const tint = useMobileCoverTint(
     item.cover ? { uri: item.cover, headers: item.coverHeaders } : null,
@@ -1049,16 +1068,29 @@ function ServerSourceFeaturedCard({ item, width, onPress }: ServerSourceFeatured
       ]}
     >
       <View style={styles.featuredContent}>
-        <View style={styles.featuredCover}>
-          <ExploreCoverImage
-            source={
-              item.cover
-                ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
-                : null
-            }
-            title={item.title}
-          />
-        </View>
+        {zoomId ? (
+          <ZoomSource zoomId={zoomId} style={styles.featuredCover}>
+            <ExploreCoverImage
+              source={
+                item.cover
+                  ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
+                  : null
+              }
+              title={item.title}
+            />
+          </ZoomSource>
+        ) : (
+          <View style={styles.featuredCover}>
+            <ExploreCoverImage
+              source={
+                item.cover
+                  ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
+                  : null
+              }
+              title={item.title}
+            />
+          </View>
+        )}
         <View style={styles.featuredText}>
           <NemuText numberOfLines={2} style={[styles.featuredTitle, { color: palette.cardInk }]}>
             {item.title}

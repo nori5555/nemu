@@ -41,6 +41,7 @@ import { MobileCollectionMembershipSheet } from "@/components/MobileCollectionMe
 import { MobileConfirmationSheet } from "@/components/MobileConfirmationSheet";
 import { MobileLibraryOptionsSheet } from "@/components/MobileLibraryOptionsSheet";
 import { withMobileExploreZoom } from "@/components/explore/mobileExploreCover";
+import { useMobileExploreZoomLanded } from "@/components/explore/mobileExploreZoomLanded";
 import {
   formatMobileExploreChapterLabel,
   withoutMobileZeroVolume,
@@ -328,6 +329,8 @@ export function SourceMangaScreen() {
     mangaTitle?: string | string[];
     /** Design-explore: add to the library as soon as the details are in. */
     add?: string;
+    /** Design-explore: the cover-zoom id this page grows out of. */
+    zoom?: string | string[];
   }>();
   const registryId = normalizeMobileSourceRouteParam(params.registryId);
   const sourceId = normalizeMobileSourceRouteParam(params.sourceId);
@@ -336,6 +339,11 @@ export function SourceMangaScreen() {
     params.mangaTitle,
     mangaId,
   );
+  // Design-explore: a page opened by a cover zoom draws its hero from the
+  // seed and holds the rest until the zoom lands — mounting the body
+  // mid-flight freezes the zoom (same rule as the library detail page).
+  const zoom = typeof params.zoom === "string" ? params.zoom : undefined;
+  const zoomLanded = useMobileExploreZoomLanded();
   const { tokens } = useNemuTheme();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage);
@@ -2176,6 +2184,8 @@ export function SourceMangaScreen() {
         leading={
           <>
             <MobileMangaDetailSurface
+              zoomId={zoom ?? null}
+              deferBody={!zoomLanded}
               readerZoomId={mobileDesignExploreFlag ? `source:${routeRef.sourceId}:${mangaId}` : null}
               pending={detailState.status === "loading"}
               onHeroPaneChange={setHeroInPane}
