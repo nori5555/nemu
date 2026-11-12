@@ -123,7 +123,8 @@ export type MobileAidokuExecutorSource = Omit<
   ) => Promise<boolean>;
   /**
    * Server-side extension sources (Suwayomi only): list the sources the
-   * server has loaded, search inside one, and add a match to the library.
+   * server has loaded, search inside one, browse its popular/latest pages,
+   * and add a match to (or remove it from) the library.
    * Optional — every other bridge omits them, and the UI checks for their
    * presence instead of assuming them. `searchServerSource` is slow by
    * nature (the server fetches the source live, 5–60s): callers pass a
@@ -136,7 +137,14 @@ export type MobileAidokuExecutorSource = Omit<
     page: number,
     signal?: AbortSignal,
   ) => Promise<MangaPageResult>;
+  browseSource?: (
+    sourceId: string,
+    type: "POPULAR" | "LATEST",
+    page: number,
+    signal?: AbortSignal,
+  ) => Promise<MangaPageResult>;
   addToLibrary?: (manga: AidokuManga) => Promise<void>;
+  removeMangaFromLibrary?: (manga: AidokuManga) => Promise<void>;
   handleWebLogin?: (
     key: string,
     cookies: Record<string, string>,
