@@ -110,6 +110,14 @@ export function getMobileSourceBrowseHref({
   return `/browse/${encodeRouteSegment(registryId)}/${encodeRouteSegment(sourceId)}` as Href;
 }
 
+/** The in-app browser for a Suwayomi server's own extension sources. */
+export function getMobileSourceServerSourcesHref({
+  registryId,
+  sourceId,
+}: MobileSourceRouteRef): Href {
+  return `/sources/${encodeRouteSegment(registryId)}/${encodeRouteSegment(sourceId)}/server-sources` as Href;
+}
+
 export function getMobileSourceBrowseSearchHref({
   registryId,
   sourceId,
