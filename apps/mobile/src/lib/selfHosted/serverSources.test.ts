@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   filterServerSourcesByLanguage,
+  filterServerSourcesToReadableLanguages,
   isChineseServerSourceLang,
   isEnglishServerSourceLang,
+  isJapaneseServerSourceLang,
   isSuwayomiServerSource,
   selectSuwayomiServerSources,
 } from "./serverSources";
@@ -17,6 +19,8 @@ const SOURCES: SelfHostedSource[] = [
   { id: "5", name: "MangaDex", lang: "en" },
   { id: "6", name: "MangaDex EN", lang: "en-US" },
   { id: "7", name: "NoLang", lang: "" },
+  { id: "8", name: "ComicWalker", lang: "ja" },
+  { id: "9", name: "MangaLivre", lang: "pt-BR" },
 ];
 
 describe("server source language filter", () => {
@@ -40,6 +44,21 @@ describe("server source language filter", () => {
 
   test("all returns every source, including ones without a language", () => {
     expect(filterServerSourcesByLanguage(SOURCES, "all")).toEqual(SOURCES);
+  });
+
+  test("readable filter keeps zh/en/ja and drops everything else", () => {
+    expect(isJapaneseServerSourceLang("ja")).toBe(true);
+    expect(isJapaneseServerSourceLang("ja-JP")).toBe(true);
+    expect(isJapaneseServerSourceLang("zh")).toBe(false);
+    expect(filterServerSourcesToReadableLanguages(SOURCES).map((s) => s.id)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "8",
+    ]);
   });
 });
 

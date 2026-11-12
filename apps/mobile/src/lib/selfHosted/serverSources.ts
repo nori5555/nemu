@@ -28,6 +28,27 @@ export function isEnglishServerSourceLang(lang: string | null | undefined): bool
   return /^en([-_]|$)/i.test((lang ?? "").trim());
 }
 
+export function isJapaneseServerSourceLang(lang: string | null | undefined): boolean {
+  return /^ja([-_]|$)/i.test((lang ?? "").trim());
+}
+
+/**
+ * The browser only shows Chinese, English and Japanese sources: a
+ * Suwayomi server usually carries a long tail of other-language sources
+ * the user never reads, and they crowd the source row and the
+ * aggregated search. Unknown/empty langs are dropped with them.
+ */
+export function filterServerSourcesToReadableLanguages(
+  sources: SelfHostedSource[],
+): SelfHostedSource[] {
+  return sources.filter(
+    (source) =>
+      isChineseServerSourceLang(source.lang) ||
+      isEnglishServerSourceLang(source.lang) ||
+      isJapaneseServerSourceLang(source.lang),
+  );
+}
+
 /**
  * The source list filtered by the language picker. Chinese is the default:
  * most Suwayomi servers carry a long tail of other-language sources the
