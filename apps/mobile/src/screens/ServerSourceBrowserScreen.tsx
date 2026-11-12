@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ServerMangaGridCard } from "@/components/ServerMangaGridCard";
 import { emitMobileLibraryDataChanged } from "@/data/mobileDataEvents";
 import {
@@ -60,6 +61,12 @@ type SearchState =
   | { status: "error"; items: MobileLiveSearchManga[]; detail: string };
 
 /**
+ * Extra bottom space so list content clears the floating bottom tab bar
+ * (the tabs use disableAutomaticContentInsets, so nothing adds it).
+ */
+const TAB_BAR_CLEARANCE = 96;
+
+/**
  * Browse a Suwayomi server's own extension sources from inside Nemu: pick a
  * source, search it, add a match to the Library, or open its detail page.
  * This never touches the global search (which still searches the Library);
@@ -84,6 +91,7 @@ export function ServerSourceBrowserScreen({
   const registryId = registryIdProp ?? normalizeMobileSourceRouteParam(params.registryId);
   const sourceId = sourceIdProp ?? normalizeMobileSourceRouteParam(params.sourceId);
   const { tokens } = useNemuTheme();
+  const insets = useSafeAreaInsets();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage).serverSourceBrowser;
   const commonStrings = getMobileStrings(appLanguage).common;
@@ -317,7 +325,11 @@ export function ServerSourceBrowserScreen({
   // inside it would nest two virtualized scrollers.)
   const listHeader = (
     <View style={styles.headerBlock}>
-      {!isSuwayomi || !installedSource ? (
+      {installed.loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator />
+        </View>
+      ) : !isSuwayomi || !installedSource ? (
         <NemuInlineEmptyState
           icon="cloud-offline"
           title={strings.unsupported}
@@ -483,7 +495,10 @@ export function ServerSourceBrowserScreen({
           keyExtractor={(item) => item.id}
           numColumns={3}
           columnWrapperStyle={styles.resultRow}
-          contentContainerStyle={styles.resultList}
+          contentContainerStyle={[
+            styles.resultList,
+            { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE },
+          ]}
           ListHeaderComponent={listHeader}
           ListEmptyComponent={
             searchState.status === "ready" && selectedSource ? (
@@ -572,7 +587,6 @@ const styles = StyleSheet.create({
   },
   resultList: {
     paddingHorizontal: 16,
-    paddingBottom: 24,
     gap: 12,
   },
   resultRow: {
@@ -581,6 +595,10 @@ const styles = StyleSheet.create({
   resultCell: {
     flex: 1,
     gap: 6,
+    // Pins the Add to Library button to the bottom of the row: without
+    // this, a two-line title (or a missing author) leaves the button
+    // hanging higher than its row-mates.
+    justifyContent: "space-between",
   },
   loadMore: {
     alignItems: "center",
