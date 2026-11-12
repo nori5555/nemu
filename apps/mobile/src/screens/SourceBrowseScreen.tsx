@@ -197,6 +197,7 @@ import {
 } from "@/lib/mobileSourceBrowseRoute";
 import {
   getMobileSourceMangaHref,
+  getMobileSourceServerSourcesHref,
   normalizeMobileSourceRouteParam,
 } from "@/lib/mobileSourceRoutes";
 import type { NemuPressableHapticFeedback } from "@/lib/nemuPressable";
@@ -3142,6 +3143,23 @@ export function SourceBrowseScreen() {
             disabled: !source,
             onPress: enterSourceSearch,
           },
+          // Suwayomi only: browse the server's own extension sources and
+          // search inside one, without opening the server's WebUI.
+          ...(installedSource?.selfHosted?.kind === "suwayomi"
+            ? [
+                {
+                  icon: "square.stack.3d.up" as const,
+                  label: strings.serverSourceBrowser.title,
+                  hint: strings.serverSourceBrowser.title,
+                  disabled: !source,
+                  onPress: () => {
+                    router.push(
+                      getMobileSourceServerSourcesHref({ registryId, sourceId }),
+                    );
+                  },
+                },
+              ]
+            : []),
         ]
       : [];
 
