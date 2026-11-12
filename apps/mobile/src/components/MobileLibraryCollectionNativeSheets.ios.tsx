@@ -52,10 +52,12 @@ export function MobileLibraryTitleMenuNativeSheet({
   collections,
   strings,
   selectedCollectionId,
+  defaultCollectionId,
   disabled,
   onClose,
   onDismiss,
   onSelect,
+  onSetDefaultCollection,
   onManage,
 }: MobileLibraryTitleMenuNativeSheetProps) {
   const { tokens } = useNemuTheme();
@@ -93,6 +95,32 @@ export function MobileLibraryTitleMenuNativeSheet({
                         textColor={tokens.foreground}
                         detailColor={tokens.mutedForeground}
             onPress={() => onSelect(collection.collectionId)}
+          />
+        ))}
+      </SwiftSection>
+      <SwiftSection header={<SwiftText>{strings.library.defaultCollection}</SwiftText>}>
+        <NativeCheckRow
+          title={strings.library.all}
+          systemImage="books.vertical"
+          selected={defaultCollectionId === null}
+          disabled={disabled}
+          tintColor={tokens.primary}
+                        textColor={tokens.foreground}
+                        detailColor={tokens.mutedForeground}
+          onPress={() => onSetDefaultCollection(null)}
+        />
+        {collections.map((collection) => (
+          <NativeCheckRow
+            key={collection.collectionId}
+            title={collection.name}
+            systemImage="rectangle.stack"
+            selectedSystemImage="rectangle.stack.fill"
+            selected={defaultCollectionId === collection.collectionId}
+            disabled={disabled}
+            tintColor={tokens.primary}
+                        textColor={tokens.foreground}
+                        detailColor={tokens.mutedForeground}
+            onPress={() => onSetDefaultCollection(collection.collectionId)}
           />
         ))}
       </SwiftSection>
