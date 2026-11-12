@@ -17,6 +17,7 @@ import {
   NemuPressable,
   NemuText,
   createNemuNativeScreenOptions,
+  createNemuShadowStyle,
   nemuFontWeight,
   radius,
   useNemuTheme,
@@ -27,6 +28,9 @@ import {
   ExploreGlassButton,
   ExploreGlassChip,
 } from "@/components/explore/ExploreGlass";
+import { buildMobileCoverTintPalette } from "@/lib/mobileCoverTint";
+import { MOBILE_EXPLORE_RADIUS as R, concentricMobileExploreRadius } from "@/lib/mobileExploreRadius";
+import { useMobileCoverTint } from "@/lib/useMobileCoverTint";
 import { ServerMangaGridCard } from "@/components/ServerMangaGridCard";
 import { useMobileDataStore } from "@/data/mobileDataContext";
 import { emitMobileDataChanged } from "@/data/mobileDataEvents";
@@ -48,9 +52,7 @@ import {
   normalizeMobileSourceRouteParam,
 } from "@/lib/mobileSourceRoutes";
 import {
-  filterServerSourcesByLanguage,
   isSuwayomiServerSource,
-  type ServerSourceLanguageFilter,
 } from "@/lib/selfHosted/serverSources";
 import type { SelfHostedSource } from "@/lib/selfHosted/backend";
 import { useSelfHostedServerSession } from "@/lib/selfHosted/useSelfHostedServerSession";
@@ -107,6 +109,15 @@ const TAB_BAR_CLEARANCE = 96;
 const GLASS_CARD_RADIUS = 20;
 
 /**
+ * A white tint over the updates panel in dark mode: liquid glass over a
+ * uniformly black page has almost nothing to refract, so without it the
+ * panel reads as a flat dark card. The tint makes it a visibly lighter
+ * frosted panel, the way the reference's updates list reads. Light mode
+ * keeps the glass default, which is already a light panel there.
+ */
+const UPDATES_GLASS_TINT_DARK = "rgba(255,255,255,0.14)";
+
+/**
  * Browse a Suwayomi server's own extension sources from inside Nemu: pick
  * a source, browse its popular/latest pages or search inside it, add a
  * match to the Library, or open its detail page. This never touches the
@@ -150,7 +161,6 @@ export function ServerSourceBrowserScreen({
   const { data: libraryEntries } = useLibraryEntries();
 
   const [sourcesState, setSourcesState] = useState<SourcesState>({ status: "idle" });
-  const [languageFilter, setLanguageFilter] = useState<ServerSourceLanguageFilter>("zh");
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [mode, setMode] = useState<BrowseMode>("home");
   const [query, setQuery] = useState("");
@@ -220,10 +230,13 @@ export function ServerSourceBrowserScreen({
     [],
   );
 
-  const filteredSources = useMemo(() => {
-    if (sourcesState.status !== "ready") return [];
-    return filterServerSourcesByLanguage(sourcesState.sources, languageFilter);
-  }, [sourcesState, languageFilter]);
+  // Every source in one scrolling row: the language filter row used to sit
+  // above it (中文/英文/全部语言), but three rows of options before any
+  // content was too much — with 20 sources the single row is enough.
+  const sources = useMemo(
+    () => (sourcesState.status === "ready" ? sourcesState.sources : []),
+    [sourcesState],
+  );
   const selectedSource = useMemo(
     () =>
       sourcesState.status === "ready"
@@ -627,31 +640,15 @@ export function ServerSourceBrowserScreen({
         </>
       ) : (
         <>
-          <NemuText style={[styles.sectionLabel, { color: tokens.mutedForeground }]}>
-            {strings.chooseSource}
-          </NemuText>
-          <View style={styles.filterRow}>
-            {(
-              [
-                { id: "zh", label: strings.chinese },
-                { id: "en", label: strings.english },
-                { id: "all", label: strings.allLanguages },
-              ] as const
-            ).map((option) => (
-              <ExploreGlassChip
-                key={option.id}
-                accessibilityLabel={option.label}
-                ink={tokens.foreground}
-                label={option.label}
-                onPress={() => setLanguageFilter(option.id)}
-                selected={languageFilter === option.id}
-              />
-            ))}
+          <View style={styles.sourceHeaderRow}>
+            <NemuText style={[styles.sectionLabel, { color: tokens.mutedForeground }]}>
+              {strings.chooseSource}
+            </NemuText>
             <NemuText style={[styles.sourceCount, { color: tokens.mutedForeground }]}>
-              {formatMobileString(strings.sourceCount, { count: filteredSources.length })}
+              {formatMobileString(strings.sourceCount, { count: sources.length })}
             </NemuText>
           </View>
-          {filteredSources.length === 0 ? (
+          {sources.length === 0 ? (
             <NemuInlineEmptyState
               icon="search-outline"
               title={strings.noSources}
@@ -664,7 +661,7 @@ export function ServerSourceBrowserScreen({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.sourceList}
             >
-              {filteredSources.map((source) => (
+              {sources.map((source) => (
                 <ExploreGlassChip
                   key={source.id}
                   accessibilityLabel={source.name}
@@ -705,26 +702,21 @@ export function ServerSourceBrowserScreen({
                 {strings.searchThisSource}
               </NemuText>
               <View style={styles.searchRow}>
-                <TextInput
-                  accessibilityLabel={strings.searchThisSource}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={setQuery}
-                  onSubmitEditing={submitSearch}
-                  placeholder={strings.searchPlaceholder}
-                  placeholderTextColor={tokens.mutedForeground}
-                  returnKeyType="search"
-                  selectionColor={tokens.primary}
-                  style={[
-                    styles.searchInput,
-                    {
-                      backgroundColor: tokens.muted,
-                      borderColor: tokens.border,
-                      color: tokens.foreground,
-                    },
-                  ]}
-                  value={query}
-                />
+                <ExploreGlass cornerRadius={0} style={styles.searchGlass}>
+                  <TextInput
+                    accessibilityLabel={strings.searchThisSource}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={setQuery}
+                    onSubmitEditing={submitSearch}
+                    placeholder={strings.searchPlaceholder}
+                    placeholderTextColor={tokens.mutedForeground}
+                    returnKeyType="search"
+                    selectionColor={tokens.primary}
+                    style={[styles.searchInput, { color: tokens.foreground }]}
+                    value={query}
+                  />
+                </ExploreGlass>
                 {searching ? (
                   <ExploreGlassButton
                     accessibilityLabel={strings.cancelSearch}
@@ -920,12 +912,20 @@ type ServerSourceFeaturedCardProps = {
 };
 
 /**
- * One featured card: a glass surface with the cover on the left and the
- * title, description and up to three genre chips on the right. Tapping
- * opens the detail page.
+ * One featured card, tinted from its own cover like the Explore home's
+ * featured cards (and the reference): the card's fill, rim, glow, text
+ * and genre pills all come from the cover's sampled colour, so each card
+ * carries its artwork's hue instead of one neutral dark panel. The card
+ * and cover corners follow the Explore scale (card 26, cover concentric
+ * at 14), not the small 8pt cover radius the previous version had.
  */
 function ServerSourceFeaturedCard({ item, width, onPress }: ServerSourceFeaturedCardProps) {
-  const { tokens } = useNemuTheme();
+  const { scheme } = useNemuTheme();
+  const tint = useMobileCoverTint(
+    item.cover ? { uri: item.cover, headers: item.coverHeaders } : null,
+    `server-source:${item.id}`,
+  );
+  const palette = useMemo(() => buildMobileCoverTintPalette(tint, scheme), [scheme, tint]);
   const genres = (item.tags ?? []).slice(0, 3);
   return (
     <NemuPressable
@@ -934,52 +934,64 @@ function ServerSourceFeaturedCard({ item, width, onPress }: ServerSourceFeatured
       hapticFeedback="selection"
       onPress={onPress}
       pressedScale={0.98}
-      style={[styles.featuredCard, { width }]}
+      style={[
+        styles.featuredCard,
+        {
+          width,
+          backgroundColor: palette.card,
+          borderColor: palette.cardRim,
+          ...createNemuShadowStyle({
+            color: palette.cardGlow,
+            offsetY: 6,
+            radius: 18,
+            opacity: 0.6,
+            elevation: 6,
+          }),
+        },
+      ]}
     >
-      <ExploreGlass cornerRadius={GLASS_CARD_RADIUS} style={styles.featuredShell}>
-        <View style={styles.featuredContent}>
-          <View
-            style={[
-              styles.featuredCover,
-              { backgroundColor: tokens.muted, borderColor: tokens.coverBorder },
-            ]}
-          >
-            <ExploreCoverImage
-              source={
-                item.cover
-                  ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
-                  : null
-              }
-              title={item.title}
-            />
-          </View>
-          <View style={styles.featuredText}>
-            <NemuText numberOfLines={2} style={[styles.featuredTitle, { color: tokens.foreground }]}>
-              {item.title}
-            </NemuText>
-            {item.description ? (
-              <NemuText
-                numberOfLines={3}
-                style={[styles.featuredDescription, { color: tokens.mutedForeground }]}
-              >
-                {item.description}
-              </NemuText>
-            ) : null}
-            {genres.length > 0 ? (
-              <View style={styles.featuredTags}>
-                {genres.map((tag) => (
-                  <ExploreGlassChip
-                    key={tag}
-                    accessibilityLabel={tag}
-                    ink={tokens.mutedForeground}
-                    label={tag}
-                  />
-                ))}
-              </View>
-            ) : null}
-          </View>
+      <View style={styles.featuredContent}>
+        <View style={styles.featuredCover}>
+          <ExploreCoverImage
+            source={
+              item.cover
+                ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
+                : null
+            }
+            title={item.title}
+          />
         </View>
-      </ExploreGlass>
+        <View style={styles.featuredText}>
+          <NemuText numberOfLines={2} style={[styles.featuredTitle, { color: palette.cardInk }]}>
+            {item.title}
+          </NemuText>
+          {item.description ? (
+            <NemuText
+              numberOfLines={3}
+              style={[styles.featuredDescription, { color: palette.cardInkSecondary }]}
+            >
+              {item.description}
+            </NemuText>
+          ) : null}
+          {genres.length > 0 ? (
+            <View style={styles.featuredTags}>
+              {genres.map((tag) => (
+                <View
+                  key={tag}
+                  style={[styles.featuredTag, { backgroundColor: palette.actionSoft }]}
+                >
+                  <NemuText
+                    numberOfLines={1}
+                    style={[styles.featuredTagText, { color: palette.cardInk }]}
+                  >
+                    {tag}
+                  </NemuText>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </View>
     </NemuPressable>
   );
 }
@@ -991,9 +1003,13 @@ type ServerSourceUpdateListProps = {
 
 /** The latest-updates rows in one glass surface, divided by hairlines. */
 function ServerSourceUpdateList({ items, onOpen }: ServerSourceUpdateListProps) {
-  const { tokens } = useNemuTheme();
+  const { scheme, tokens } = useNemuTheme();
   return (
-    <ExploreGlass cornerRadius={GLASS_CARD_RADIUS} style={styles.updatesShell}>
+    <ExploreGlass
+      cornerRadius={GLASS_CARD_RADIUS}
+      style={styles.updatesShell}
+      tintColor={scheme === "dark" ? UPDATES_GLASS_TINT_DARK : undefined}
+    >
       <View style={styles.updatesContent}>
         {items.map((item, index) => (
           <View
@@ -1085,11 +1101,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: nemuFontWeight.semibold,
   },
-  filterRow: {
+  sourceHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
-    flexWrap: "wrap",
   },
   sourceCount: {
     fontSize: 13,
@@ -1114,10 +1130,14 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     minHeight: 40,
-    borderRadius: 10,
-    borderWidth: 1,
+    // The glass capsule supplies the shape and fill; the input itself is
+    // transparent inside it.
     paddingHorizontal: 12,
     fontSize: 16,
+  },
+  searchGlass: {
+    flex: 1,
+    minHeight: 40,
   },
   searchingRow: {
     flexDirection: "row",
@@ -1172,9 +1192,10 @@ const styles = StyleSheet.create({
   },
   featuredCard: {
     flexShrink: 0,
-  },
-  featuredShell: {
-    width: "100%",
+    // The Explore featured-card corner (26); the cover inside is concentric.
+    borderRadius: R.card,
+    borderCurve: "continuous",
+    borderWidth: StyleSheet.hairlineWidth,
   },
   featuredContent: {
     flexDirection: "row",
@@ -1186,8 +1207,10 @@ const styles = StyleSheet.create({
     width: 110,
     aspectRatio: 3 / 4,
     overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.md,
+    // Concentric with the card (26 less the 12pt padding), like the
+    // Explore home's featured covers — visibly rounder than the old 8pt.
+    borderRadius: concentricMobileExploreRadius(R.card, 12),
+    borderCurve: "continuous",
   },
   featuredText: {
     flex: 1,
@@ -1207,6 +1230,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
+  },
+  featuredTag: {
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  featuredTagText: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: nemuFontWeight.medium,
   },
   updatesHeader: {
     flexDirection: "row",
@@ -1245,7 +1278,8 @@ const styles = StyleSheet.create({
     aspectRatio: 3 / 4,
     overflow: "hidden",
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radius.sm,
+    // The Explore list-cover corner (group 20 less the 12pt row inset).
+    borderRadius: concentricMobileExploreRadius(R.group, 12),
   },
   updateText: {
     flex: 1,
