@@ -1146,6 +1146,15 @@ export type MobileStrings = {
     noServer: string;
     noServerHint: string;
     addServer: string;
+    /** Browse-mode chips and the home sections. */
+    home: string;
+    popular: string;
+    latest: string;
+    mode: string;
+    popularNewTitles: string;
+    latestUpdates: string;
+    viewAll: string;
+    browseFailed: string;
   };
   /** A Suwayomi server's Library listing, as a bottom-bar tab. */
   serverLibrary: {

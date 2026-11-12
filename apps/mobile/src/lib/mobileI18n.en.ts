@@ -1302,9 +1302,16 @@ export const mobileStringsEn: MobileStrings = {
     unsupported: "This server doesn't support browsing sources",
     openManga: "Open manga",
     noServer: "No server yet",
-    noServerHint:
-      "Add a Suwayomi server first, then its library and sources live here.",
+    noServerHint: "Add a Suwayomi server first, then browse its sources here.",
     addServer: "Add server",
+    home: "Home",
+    popular: "Popular",
+    latest: "Latest",
+    mode: "Browse mode",
+    popularNewTitles: "Popular New Titles",
+    latestUpdates: "Latest Updates",
+    viewAll: "View all",
+    browseFailed: "Couldn't load",
   },
   serverLibrary: {
     title: "Server Library",

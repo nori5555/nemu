@@ -1314,9 +1314,16 @@ export const mobileStringsJa: MobileStrings = {
     unsupported: "このサーバーはソースの閲覧に対応していません",
     openManga: "マンガを開く",
     noServer: "サーバーがありません",
-    noServerHint:
-      "Suwayomiサーバーを追加すると、ここにライブラリとソースが表示されます。",
+    noServerHint: "Suwayomiサーバーを追加すると、ここでソースを閲覧できます。",
     addServer: "サーバーを追加",
+    home: "ホーム",
+    popular: "人気",
+    latest: "最新",
+    mode: "表示モード",
+    popularNewTitles: "人気の新作",
+    latestUpdates: "最新の更新",
+    viewAll: "すべて見る",
+    browseFailed: "読み込めませんでした",
   },
   serverLibrary: {
     title: "サーバーのライブラリ",
