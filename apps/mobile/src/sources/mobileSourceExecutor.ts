@@ -10,6 +10,7 @@ import {
   type Page as AidokuPage,
 } from "./aidokuContract";
 import type { SourcePackageMetadata } from "@/data/schema";
+import type { SelfHostedSource } from "@/lib/selfHosted/backend";
 import { defaultMobileAidokuExecutorBridge } from "./mobileAidokuExecutorBridge";
 import {
   loadMobileSourcePackage,
@@ -120,6 +121,22 @@ export type MobileAidokuExecutorSource = Omit<
     username: string,
     password: string,
   ) => Promise<boolean>;
+  /**
+   * Server-side extension sources (Suwayomi only): list the sources the
+   * server has loaded, search inside one, and add a match to the library.
+   * Optional — every other bridge omits them, and the UI checks for their
+   * presence instead of assuming them. `searchServerSource` is slow by
+   * nature (the server fetches the source live, 5–60s): callers pass a
+   * signal so the user can cancel, and never call it per keystroke.
+   */
+  getServerSources?: () => Promise<SelfHostedSource[]>;
+  searchServerSource?: (
+    sourceId: string,
+    query: string,
+    page: number,
+    signal?: AbortSignal,
+  ) => Promise<MangaPageResult>;
+  addToLibrary?: (manga: AidokuManga) => Promise<void>;
   handleWebLogin?: (
     key: string,
     cookies: Record<string, string>,
