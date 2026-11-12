@@ -1117,14 +1117,14 @@ export type MobileStrings = {
   serverSourceBrowser: {
     title: string;
     chooseSource: string;
-    searchThisSource: string;
+    searchAllSources: string;
     searchPlaceholder: string;
     search: string;
     cancelSearch: string;
     allLanguages: string;
     chinese: string;
     english: string;
-    /** `{{count}}` is the number of sources after the language filter. */
+    /** `{{count}}` is the number of sources on the server. */
     sourceCount: string;
     addToLibrary: string;
     inLibrary: string;
@@ -1139,6 +1139,8 @@ export type MobileStrings = {
     typeToSearch: string;
     searching: string;
     searchingHint: string;
+    /** `{{done}}` sources have answered out of `{{total}}` so far. */
+    searchingProgress: string;
     loadMore: string;
     loadingMore: string;
     unsupported: string;
