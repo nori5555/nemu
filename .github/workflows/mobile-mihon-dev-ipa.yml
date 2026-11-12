@@ -81,6 +81,13 @@ jobs:
         # Same step upstream mobile.yml runs before pod install.
         working-directory: apps/mobile
         run: bun run ocr:models
+      - name: Materialise super-resolution model
+        # Same shape as the OCR step: the NemuSuperResolution podspec refuses
+        # a Release build without the compiled model, and `pod install` must
+        # see it to bundle it. Downloads the pinned 2.4 MB Real-ESRGAN x4v3
+        # package from Hugging Face and compiles it with coremlcompiler.
+        working-directory: apps/mobile
+        run: bun run sr:model
       - name: Install CocoaPods
         working-directory: apps/mobile/ios
         run: pod install
