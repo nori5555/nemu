@@ -12,15 +12,22 @@ import type { MobileLiveSearchManga } from "@/sources/mobileSourceSearch";
  * One manga cell in a server-driven grid (server library, server-source
  * search results): cover, title, authors. The parent owns the cell layout
  * and anything below the card (e.g. an Add to Library button).
+ *
+ * `sourceLabel` names the extension source a hit came from; it only
+ * renders when given, so per-source grids are unchanged. It is a
+ * conditional line because every card in one grid shares the same mode:
+ * either all of them carry a source or none do, so rows stay even.
  */
 export function ServerMangaGridCard({
   item,
   onPress,
   openLabel,
+  sourceLabel,
 }: {
   item: MobileLiveSearchManga;
   onPress: () => void;
   openLabel: string;
+  sourceLabel?: string;
 }) {
   const { tokens } = useNemuTheme();
   return (
@@ -59,6 +66,11 @@ export function ServerMangaGridCard({
       <NemuText numberOfLines={1} style={[styles.subtitle, { color: tokens.mutedForeground }]}>
         {item.authors?.length ? item.authors.join(", ") : ""}
       </NemuText>
+      {sourceLabel ? (
+        <NemuText numberOfLines={1} style={[styles.source, { color: tokens.mutedForeground }]}>
+          {sourceLabel}
+        </NemuText>
+      ) : null}
     </NemuPressable>
   );
 }
@@ -85,5 +97,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 15,
     minHeight: 15,
+  },
+  source: {
+    fontSize: 11,
+    lineHeight: 14,
+    minHeight: 14,
   },
 });
