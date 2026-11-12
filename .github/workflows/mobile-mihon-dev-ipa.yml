@@ -70,12 +70,12 @@ jobs:
       - name: Generate iOS native project
         working-directory: apps/mobile
         run: bunx expo prebuild --platform ios --no-install
-    - name: Materialise manga OCR models
-      # Release builds refuse to build without them (NemuJapaneseLearning
-      # podspec), and `pod install` must see them to bundle them.
-      # Same step upstream mobile.yml runs before pod install.
-      working-directory: apps/mobile
-      run: bun run ocr:models
+      - name: Materialise manga OCR models
+        # Release builds refuse to build without them (NemuJapaneseLearning
+        # podspec), and `pod install` must see them to bundle them.
+        # Same step upstream mobile.yml runs before pod install.
+        working-directory: apps/mobile
+        run: bun run ocr:models
       - name: Install CocoaPods
         working-directory: apps/mobile/ios
         run: pod install
