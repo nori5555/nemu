@@ -42,6 +42,7 @@ import {
 } from "@/design-system";
 import { MobileExpandableDescription } from "@/components/MobileExpandableDescription";
 import { useMobileMangaDetailPane } from "@/components/MobileMangaDetailPaneContext";
+import { useSuperResolvedCover } from "@/lib/mobileSuperResolution";
 import { MobileMangaDetailTagSheet } from "@/components/MobileMangaDetailTagSheet";
 import { MobileMangaStatusBadge } from "@/components/MobileMangaStatusBadge";
 import { MobileMangaDetailBooksHero } from "@/components/explore/MobileMangaDetailBooksHero";
@@ -242,6 +243,11 @@ function MobileMangaDetailSurfaceClassic({
   const { tokens } = useNemuTheme();
   const { fontScale, width: windowWidth } = useWindowDimensions();
   const minimumTouchTarget = getNemuButtonMinimumTargetSize(Platform.OS);
+  // The same 4x on-device upscale as the Books hero: the upscaled file swaps
+  // in when it is ready, the original shows until then.
+  const remoteCover = isRemoteImageSource(coverSource) ? coverSource : null;
+  const upscaledCoverUri = useSuperResolvedCover(remoteCover?.uri, remoteCover?.headers);
+  const displayCover = upscaledCoverUri ? { uri: upscaledCoverUri } : remoteCover;
   // Regular-width info pane: no card inside the pane, a larger cover, every
   // tag below the hero row and the description in full (see
   // `mobileMangaDetailPaneLayout`). Everywhere else: design A, unchanged.
@@ -621,7 +627,7 @@ function MobileMangaDetailSurfaceClassic({
               },
             ]}
           >
-            {isRemoteImageSource(coverSource) ? (
+            {displayCover ? (
               <MobileCachedImage
                 fallback={
                   <LinearGradient
@@ -629,9 +635,9 @@ function MobileMangaDetailSurfaceClassic({
                     style={styles.coverPlaceholder}
                   />
                 }
-                uriOwnership="source"
+                uriOwnership={upscaledCoverUri ? "app" : "source"}
                 holdPreviousWhileLoading
-                source={coverSource}
+                source={displayCover}
                 onError={onCoverError ? () => onCoverError() : undefined}
                 onLoad={onCoverLoad ? () => onCoverLoad() : undefined}
                 style={styles.coverImage}

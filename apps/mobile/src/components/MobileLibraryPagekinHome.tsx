@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   Extrapolation,
@@ -21,6 +21,7 @@ import {
   useMobileExploreEntryCover,
 } from "@/components/explore/mobileExploreCover";
 import { getEntryTitle, type InstalledSource, type LibraryEntry } from "@/data/schema";
+import { useSuperResolvedCover } from "@/lib/mobileSuperResolution";
 import pagekinCoverGrain from "../../assets/pagekin-cover-grain.png";
 import type { MobileStrings } from "@/lib/mobileI18n";
 import {
@@ -68,6 +69,8 @@ const PagekinCover = memo(function PagekinCover({
   onOpen,
   onLongPress,
   zoomId,
+  superResolve,
+  grain,
 }: {
   entry: LibraryEntry;
   installedSources: InstalledSource[];
@@ -77,25 +80,41 @@ const PagekinCover = memo(function PagekinCover({
   /** Long-press opens the entry's quick menu (edit info, collections…). */
   onLongPress?: (entry: LibraryEntry) => void;
   zoomId: string;
+  /** Upscale the cover 4x on-device (featured cover only; the fan stays raw). */
+  superResolve?: boolean;
+  /** Paper grain over the cover (featured cover only; the fan stays clean). */
+  grain?: boolean;
 }) {
   const { tokens } = useNemuTheme();
   // The same cover the grid cells and the detail page paint, so the home
   // shares their cached image.
   const coverSource = useMobileExploreEntryCover(entry, installedSources);
   const uri = coverSource?.uri;
+  // The upscaled file swaps in when it is ready; until then (and when the
+  // build has no model) the original cover shows, so the upscale never
+  // blocks the shelf from painting.
+  const upscaledUri = useSuperResolvedCover(superResolve ? uri : null, coverSource?.headers);
+  const displayCover = upscaledUri ? { uri: upscaledUri } : coverSource;
+  // Which cover URI has actually painted. The grain only renders on top of
+  // a loaded cover: over an empty slot it would read as a lone dark grain
+  // rectangle, and keyed by URI it hides again when the featured book
+  // changes until the new cover lands.
+  const [loadedUri, setLoadedUri] = useState<string | null>(null);
   const height = width * 1.5;
   return (
     <Pressable
       accessibilityLabel={getEntryTitle(entry)}
       accessibilityRole="button"
-      onPress={() => onOpen(entry, coverSource)}
+      onPress={() => onOpen(entry, displayCover)}
       onLongPress={onLongPress ? () => onLongPress(entry) : undefined}
     >
       <ZoomSource zoomId={zoomId} style={{ width, height, borderRadius: radius }}>
-        {uri ? (
+        {displayCover ? (
           <MobileCachedImage
-            uriOwnership="source"
-            source={{ uri, headers: coverSource?.headers }}
+            uriOwnership={upscaledUri ? "app" : "source"}
+            source={displayCover}
+            onLoad={() => setLoadedUri(uri ?? null)}
+            onError={() => setLoadedUri(null)}
             style={{
               width,
               height,
@@ -107,6 +126,22 @@ const PagekinCover = memo(function PagekinCover({
         ) : (
           <MobileExploreCoverPlaceholder title={getEntryTitle(entry)} width={width} />
         )}
+        {grain && displayCover && loadedUri === uri ? (
+          <Image
+            source={pagekinCoverGrain}
+            resizeMode="repeat"
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width,
+              height,
+              borderRadius: radius,
+              opacity: FEATURED_GRAIN_OPACITY,
+            }}
+          />
+        ) : null}
       </ZoomSource>
     </Pressable>
   );
@@ -240,33 +275,19 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
             elevation: 8,
           })}
         >
-          <View style={{ position: "relative" }}>
-            <PagekinCover
-              entry={featured}
-              installedSources={installedSources}
-              width={featuredWidth}
-              radius={14}
-              zoomId={`pagekin-featured:${featured.item.libraryItemId}`}
-              onOpen={(opened, cover) =>
-                openPagekinEntry(opened, cover, `pagekin-featured:${opened.item.libraryItemId}`)
-              }
-              onLongPress={onEntryLongPress}
-            />
-            <Image
-              source={pagekinCoverGrain}
-              resizeMode="repeat"
-              pointerEvents="none"
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                borderRadius: 14,
-                opacity: FEATURED_GRAIN_OPACITY,
-              }}
-            />
-          </View>
+          <PagekinCover
+            entry={featured}
+            installedSources={installedSources}
+            width={featuredWidth}
+            radius={14}
+            zoomId={`pagekin-featured:${featured.item.libraryItemId}`}
+            superResolve
+            grain
+            onOpen={(opened, cover) =>
+              openPagekinEntry(opened, cover, `pagekin-featured:${opened.item.libraryItemId}`)
+            }
+            onLongPress={onEntryLongPress}
+          />
         </View>
         {featured.item.metadata.authors?.[0] ? (
           <NemuText color={tokens.mutedForeground} numberOfLines={1} style={styles.author}>
