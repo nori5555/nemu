@@ -45,6 +45,20 @@ describe("mobile source routes", () => {
     ).toBe("/sources/aidoku-community/ja.raw/title%2F123%3Flang%3Dja");
   });
 
+  test("carries a cover-zoom id into source manga navigation", () => {
+    expect(
+      getMobileSourceMangaHref({
+        registryId: "self-hosted",
+        sourceId: "suwayomi.test",
+        mangaId: "114",
+        mangaTitle: "特聘公务员",
+        zoom: "server:self-hosted:suwayomi.test:114",
+      }),
+    ).toBe(
+      "/sources/self-hosted/suwayomi.test/114?mangaTitle=%E7%89%B9%E8%81%98%E5%85%AC%E5%8A%A1%E5%91%98&zoom=server%3Aself-hosted%3Asuwayomi.test%3A114",
+    );
+  });
+
   test("routes the server-source browser under the manga detail stack", () => {
     expect(
       getMobileSourceServerSourcesHref({
