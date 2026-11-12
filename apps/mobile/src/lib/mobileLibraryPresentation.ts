@@ -399,6 +399,54 @@ export function getMobileLibraryCaughtUpCandidates(
   return candidates;
 }
 
+/**
+ * The Pagekin home's featured title: the most recently read entry, by the
+ * progress record's read time. Entries never read count as read at 0, so a
+ * library with no reading yet features its first title instead of nothing.
+ * Null when the library is empty.
+ */
+export function pickMobileLibraryFeaturedEntry(
+  entries: LibraryEntry[],
+  progressIndex: MobileLibraryProgressIndex,
+): LibraryEntry | null {
+  if (entries.length === 0) return null;
+  let featured = entries[0];
+  let featuredReadAt = -1;
+  for (const entry of entries) {
+    const progress = resolveMobileEntryProgressMap(entry, progressIndex);
+    let readAt = 0;
+    for (const record of progress.values()) {
+      if (record.lastReadAt > readAt) readAt = record.lastReadAt;
+    }
+    if (readAt > featuredReadAt) {
+      featured = entry;
+      featuredReadAt = readAt;
+    }
+  }
+  return featured;
+}
+
+/**
+ * How far through its most recently read source a title is, as a 0–1
+ * fraction: last-read chapter number over the source's latest chapter
+ * number. Null when either number is missing or the latest is not positive
+ * (unnumbered chapters, a source that never reports a latest chapter) — the
+ * card then shows its progress text with no bar.
+ */
+export function mobileLibraryReadFraction(
+  entry: LibraryEntry,
+  progressIndex: MobileLibraryProgressIndex,
+): number | null {
+  const progress = resolveMobileEntryProgressMap(entry, progressIndex);
+  const recent = getMobileEntryMostRecentSource(entry, progress);
+  const read = recent ? progress.get(recent.id)?.lastReadChapterNumber : undefined;
+  const latest = recent?.latestChapter?.chapterNumber;
+  if (typeof read !== "number" || typeof latest !== "number" || latest <= 0 || read < 0) {
+    return null;
+  }
+  return Math.min(1, read / latest);
+}
+
 export function getMobileLibraryProgressInfo(
   entry: LibraryEntry,
   progressIndex: MobileLibraryProgressIndex,

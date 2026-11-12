@@ -259,6 +259,7 @@ export const mobileStringsJa: MobileStrings = {
     titleMenuEditCollection: "コレクションを編集…",
     titleMenuHint: "ライブラリに表示するコレクションを切り替えます。",
     titleMenuManageCollections: "コレクションを管理…",
+    defaultCollection: "デフォルトのコレクション",
     titleMenuNewCollection: "新規コレクション…",
     updated: "更新済み",
     editCollectionTitle: "コレクションを編集",

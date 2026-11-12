@@ -244,6 +244,7 @@ export const mobileStringsZh: MobileStrings = {
     titleMenuEditCollection: "编辑收藏夹…",
     titleMenuHint: "切换书库中显示的收藏夹。",
     titleMenuManageCollections: "管理收藏夹…",
+    defaultCollection: "默认书架",
     titleMenuNewCollection: "新建收藏夹…",
     updated: "更新",
     editCollectionTitle: "编辑收藏夹",

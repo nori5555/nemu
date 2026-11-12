@@ -235,6 +235,7 @@ export type MobileStrings = {
     titleMenuEditCollection: string;
     titleMenuHint: string;
     titleMenuManageCollections: string;
+    defaultCollection: string;
     titleMenuNewCollection: string;
     updated: string;
     editCollectionTitle: string;

@@ -258,6 +258,7 @@ export const mobileStringsEn: MobileStrings = {
     titleMenuEditCollection: "Edit Collection…",
     titleMenuHint: "Switches the collection shown in your library.",
     titleMenuManageCollections: "Manage…",
+    defaultCollection: "Default collection",
     titleMenuNewCollection: "New Collection…",
     updated: "Updated",
     editCollectionTitle: "Edit Collection",

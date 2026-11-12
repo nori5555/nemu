@@ -21,7 +21,9 @@ import {
   getMobileLibraryCaughtUpCandidates,
   getMobileLibraryProgressInfo,
   mobileLibraryChapterKey,
+  mobileLibraryReadFraction,
   paginateMobileLibraryMergeCandidates,
+  pickMobileLibraryFeaturedEntry,
   shouldRenderMobileLibrarySkeleton,
   shouldShowMobileEmptyCollectionHero,
   shouldShowMobileLibraryEmptyOnboarding,
@@ -93,6 +95,42 @@ function progress(
     updatedAt: lastReadAt,
   };
 }
+
+describe("pagekin home featured title and read fraction", () => {
+  test("featured is the most recently read title, first when nothing was read", () => {
+    const a = entry("a", 1, [sourceLink("a")]);
+    const b = entry("b", 2, [sourceLink("b")]);
+    const c = entry("c", 3, [sourceLink("c")]);
+    const progressIndex = buildMobileProgressIndex([
+      progress("a", 100),
+      progress("b", 500),
+    ]);
+    expect(pickMobileLibraryFeaturedEntry([a, b, c], progressIndex)?.item.libraryItemId).toBe("b");
+    expect(pickMobileLibraryFeaturedEntry([a, c], buildMobileProgressIndex([]))?.item.libraryItemId).toBe("a");
+    expect(pickMobileLibraryFeaturedEntry([], progressIndex)).toBeNull();
+  });
+
+  test("read fraction is last-read over latest chapter, null when uncomputable", () => {
+    const read = entry("read", 1, [
+      sourceLink("read", { latestChapter: { id: "c8", chapterNumber: 8 } }),
+    ]);
+    const noLatest = entry("no-latest", 2, [sourceLink("no-latest")]);
+    const neverRead = entry("never", 3, [
+      sourceLink("never", { latestChapter: { id: "c8", chapterNumber: 8 } }),
+    ]);
+    const over = entry("over", 4, [
+      sourceLink("over", { latestChapter: { id: "c8", chapterNumber: 8 } }),
+    ]);
+    const progressIndex = buildMobileProgressIndex([
+      progress("read", 100, "c2"),
+      progress("over", 100, "c10"),
+    ]);
+    expect(mobileLibraryReadFraction(read, progressIndex)).toBe(0.25);
+    expect(mobileLibraryReadFraction(noLatest, progressIndex)).toBeNull();
+    expect(mobileLibraryReadFraction(neverRead, progressIndex)).toBeNull();
+    expect(mobileLibraryReadFraction(over, progressIndex)).toBe(1);
+  });
+});
 
 describe("mobile library presentation", () => {
   test("sorts updated entries before recent reading and added time", () => {
