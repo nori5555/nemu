@@ -6,6 +6,7 @@ import {
   nemuFontWeight,
   useNemuTheme,
 } from "@/design-system";
+import { ZoomSource } from "../../modules/nemu-window-layout";
 import type { MobileLiveSearchManga } from "@/sources/mobileSourceSearch";
 
 /**
@@ -23,13 +24,34 @@ export function ServerMangaGridCard({
   onPress,
   openLabel,
   sourceLabel,
+  zoomId,
 }: {
   item: MobileLiveSearchManga;
   onPress: () => void;
   openLabel: string;
   sourceLabel?: string;
+  /** Design-explore: the cover zooms into the detail page. */
+  zoomId?: string | null;
 }) {
   const { tokens } = useNemuTheme();
+  const cover = (
+    <ExploreCoverImage
+      source={
+        item.cover
+          ? {
+              uri: item.cover,
+              headers: item.coverHeaders,
+              cache: "force-cache" as const,
+            }
+          : null
+      }
+      title={item.title}
+    />
+  );
+  const coverStyle = [
+    styles.cover,
+    { backgroundColor: tokens.muted, borderColor: tokens.coverBorder },
+  ];
   return (
     <NemuPressable
       accessibilityRole="button"
@@ -38,25 +60,13 @@ export function ServerMangaGridCard({
       pressedScale={0.98}
       style={styles.card}
     >
-      <View
-        style={[
-          styles.cover,
-          { backgroundColor: tokens.muted, borderColor: tokens.coverBorder },
-        ]}
-      >
-        <ExploreCoverImage
-          source={
-            item.cover
-              ? {
-                  uri: item.cover,
-                  headers: item.coverHeaders,
-                  cache: "force-cache" as const,
-                }
-              : null
-          }
-          title={item.title}
-        />
-      </View>
+      {zoomId ? (
+        <ZoomSource zoomId={zoomId} style={coverStyle}>
+          {cover}
+        </ZoomSource>
+      ) : (
+        <View style={coverStyle}>{cover}</View>
+      )}
       <NemuText numberOfLines={2} style={[styles.title, { color: tokens.foreground }]}>
         {item.title}
       </NemuText>
