@@ -139,6 +139,8 @@ import {
   loadMobileChapterProgressForSource,
 } from "@/lib/mobileMangaDetailProgress";
 import { toSearchSourceDisplay } from "@/lib/mobileSearch";
+import { isSuwayomiServerSource } from "@/lib/selfHosted/serverSources";
+import { runWithSuwayomiServerSession } from "@/lib/selfHosted/serverSession";
 import { getMobileSourceMangaContinueTarget } from "@/lib/mobileSourceMangaContinue";
 import { mobileContinueReaderPage } from "@/lib/mobileReaderEndExit";
 import {
@@ -1559,6 +1561,17 @@ export function SourceMangaScreen() {
         ...current,
         libraryEntry: null,
       }));
+      // Fire-and-forget: the server library mirrors the local one, so a
+      // removal here also un-libraries the title on the server. Never
+      // fails the local removal if the server is unreachable.
+      const serverSource = localState.installedSource;
+      if (serverSource && isSuwayomiServerSource(serverSource)) {
+        const removedTitle = localState.libraryEntry.item.metadata.title;
+        void runWithSuwayomiServerSession(store, serverSource, async (session) => {
+          if (typeof session.source.removeMangaFromLibrary !== "function") return;
+          await session.source.removeMangaFromLibrary({ key: mangaId, title: removedTitle });
+        }).catch(() => {});
+      }
       setCollectionSheetOpen(false);
       setLibraryOptionsOpen(false);
       if (
@@ -1586,7 +1599,7 @@ export function SourceMangaScreen() {
       removingRef.current = false;
       setRemoving(false);
     }
-  }, [localState.libraryEntry, store, strings.sourceManga.actionFailedDetail]);
+  }, [localState.installedSource, localState.libraryEntry, mangaId, store, strings.sourceManga.actionFailedDetail]);
 
   // The library title page's ··· editors, on this page's library record.
   const detailActionBusy = adding || removing || openingReader || savingMetadata;

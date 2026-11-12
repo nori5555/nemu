@@ -187,6 +187,8 @@ import {
   findInstalledSourceForLink,
   refreshMobileLibraryLatestChapters,
 } from "@/lib/mobileLibraryRefresh";
+import { syncAllSuwayomiLibraries } from "@/lib/selfHosted/syncSuwayomiLibrary";
+import { selectSuwayomiServerSources } from "@/lib/selfHosted/serverSources";
 import { resolveMobileSheetHeaderMetrics } from "@/lib/mobileNativeSheet";
 import {
   buildMobileLibraryCardProgress,
@@ -1500,6 +1502,42 @@ export function LibraryScreen({
     toast,
   ]);
 
+  // Two-way sync with every installed Suwayomi server's library: server
+  // titles missing locally get a local entry, and local entries linked to
+  // a server but missing from it are pushed to the server. The sync reads
+  // its own rows from the store, so it also runs when the local library
+  // starts empty (where `refreshLatestChapters` above returns early).
+  // Failures never break the refresh — an unreachable server is skipped.
+  const syncSuwayomiLibraries = useCallback(async () => {
+    try {
+      await syncAllSuwayomiLibraries(store, installedSources.data);
+    } catch {
+      // Unreachable server: leave the local library alone.
+    }
+  }, [installedSources.data, store]);
+
+  // Launch sweep: once the library rows and the installed-source list have
+  // loaded, sync each Suwayomi server not synced yet in this mount (a
+  // server added later gets its own first sync when the list changes).
+  const suwayomiSyncedServersRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (libraryLoading || installedSources.loading) return;
+    const pending = selectSuwayomiServerSources(installedSources.data).filter(
+      (server) =>
+        !suwayomiSyncedServersRef.current.has(
+          `${server.registryId}:${server.sourceId}`,
+        ),
+    );
+    if (pending.length === 0) return;
+    for (const server of pending) {
+      suwayomiSyncedServersRef.current.add(`${server.registryId}:${server.sourceId}`);
+    }
+    const task = scheduleMobileIdleTask(() => {
+      void syncSuwayomiLibraries();
+    });
+    return () => task.cancel();
+  }, [installedSources.data, installedSources.loading, libraryLoading, syncSuwayomiLibraries]);
+
   // Blur-abort: when the user taps a manga (which navigates away and blurs
   // this screen) or otherwise leaves the library, flip the abort flag so the
   // in-flight sweep yields the shared runtime queue to the foreground screen.
@@ -2703,6 +2741,7 @@ export function LibraryScreen({
       contentContainerStyle={libraryContentContainerStyle}
       onRefresh={() => {
         void refreshLatestChapters({ force: true, interactive: true });
+        void syncSuwayomiLibraries();
       }}
       refreshDisabled={libraryRefreshDisabled}
       refreshLabel={strings.library.refreshLibrary}

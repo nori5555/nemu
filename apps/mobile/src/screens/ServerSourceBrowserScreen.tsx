@@ -6,26 +6,40 @@ import {
   StyleSheet,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ServerMangaGridCard } from "@/components/ServerMangaGridCard";
-import { emitMobileLibraryDataChanged } from "@/data/mobileDataEvents";
 import {
-  useInstalledSources,
-  useMobileLanguageSettings,
-} from "@/data/mobileHooks";
-import {
-  createNemuNativeScreenOptions,
+  GlassSurface,
   MobileChip,
   NemuButton,
   NemuInlineEmptyState,
+  NemuPressable,
   NemuText,
+  createNemuNativeScreenOptions,
   nemuFontWeight,
+  radius,
   useNemuTheme,
 } from "@/design-system";
+import { ExploreCoverImage } from "@/components/explore/ExploreCoverImage";
+import { ReaderSegmentedChipRow } from "@/components/reader/ReaderSegmentedChipRow";
+import { ServerMangaGridCard } from "@/components/ServerMangaGridCard";
+import { useMobileDataStore } from "@/data/mobileDataContext";
+import { emitMobileDataChanged } from "@/data/mobileDataEvents";
+import {
+  useInstalledSources,
+  useLibraryEntries,
+  useMobileLanguageSettings,
+} from "@/data/mobileHooks";
 import { formatMobileString, getMobileStrings } from "@/lib/mobileI18n";
 import { mobileInstalledSourceMatchesRoute } from "@/lib/mobileInstalledSourceKeys";
+import {
+  findLibraryEntryForLiveSearchResult,
+  makeLiveSearchLibraryImport,
+} from "@/lib/mobileLibraryImport";
+import { toSearchSourceDisplay } from "@/lib/mobileSearch";
 import { setMobileSourceDetailSeed } from "@/lib/mobileSourceDetailSeed";
 import {
   getMobileSourceMangaHref,
@@ -60,6 +74,23 @@ type SearchState =
     }
   | { status: "error"; items: MobileLiveSearchManga[]; detail: string };
 
+type HomeSectionState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; items: MobileLiveSearchManga[] }
+  | { status: "error"; detail: string };
+
+type BrowseState =
+  | { status: "idle" }
+  | { status: "loading"; items: MobileLiveSearchManga[]; page: number }
+  | { status: "ready"; items: MobileLiveSearchManga[]; page: number; hasMore: boolean }
+  | { status: "error"; items: MobileLiveSearchManga[]; detail: string };
+
+type BrowseMode = "home" | "popular" | "latest";
+
+const FEATURED_LIMIT = 8;
+const UPDATES_LIMIT = 10;
+
 /**
  * Extra bottom space so list content clears the floating bottom tab bar
  * (the tabs use disableAutomaticContentInsets, so nothing adds it).
@@ -67,14 +98,20 @@ type SearchState =
 const TAB_BAR_CLEARANCE = 96;
 
 /**
- * Browse a Suwayomi server's own extension sources from inside Nemu: pick a
- * source, search it, add a match to the Library, or open its detail page.
- * This never touches the global search (which still searches the Library);
- * it is a separate entry from a Suwayomi source's browse page.
+ * Browse a Suwayomi server's own extension sources from inside Nemu: pick
+ * a source, browse its popular/latest pages or search inside it, add a
+ * match to the Library, or open its detail page. This never touches the
+ * global search (which still searches the Library); it is a separate entry
+ * from a Suwayomi source's browse page.
  *
  * A source search is slow by nature — the server fetches the source live,
  * 5–60s — so it only runs from the Search button, with a Cancel button that
  * aborts the request, and never per keystroke.
+ *
+ * The layout follows the MangaDex-style reference (a featured carousel
+ * plus a latest-updates list), but every surface is Nemu's own: the chips
+ * are the app's depth pills and the cards are GlassSurface, not the
+ * reference's dark solid pills and cards.
  */
 export function ServerSourceBrowserScreen({
   registryId: registryIdProp,
@@ -84,7 +121,7 @@ export function ServerSourceBrowserScreen({
   /** Tab callers pass the server directly; the route passes it via params. */
   registryId?: string;
   sourceId?: string;
-  /** The combined server tab renders its own header above both pages. */
+  /** The server tab renders its own header above the page. */
   showHeader?: boolean;
 } = {}) {
   const params = useLocalSearchParams<{ registryId: string; sourceId: string }>();
@@ -92,10 +129,33 @@ export function ServerSourceBrowserScreen({
   const sourceId = sourceIdProp ?? normalizeMobileSourceRouteParam(params.sourceId);
   const { tokens } = useNemuTheme();
   const insets = useSafeAreaInsets();
+  const store = useMobileDataStore();
+  const { width: windowWidth } = useWindowDimensions();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage).serverSourceBrowser;
   const commonStrings = getMobileStrings(appLanguage).common;
   const installed = useInstalledSources();
+  const { data: libraryEntries } = useLibraryEntries();
+
+  const [sourcesState, setSourcesState] = useState<SourcesState>({ status: "idle" });
+  const [languageFilter, setLanguageFilter] = useState<ServerSourceLanguageFilter>("zh");
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [mode, setMode] = useState<BrowseMode>("home");
+  const [query, setQuery] = useState("");
+  const [searchState, setSearchState] = useState<SearchState>({ status: "idle" });
+  const [browseState, setBrowseState] = useState<BrowseState>({ status: "idle" });
+  const [homeState, setHomeState] = useState<{
+    popular: HomeSectionState;
+    latest: HomeSectionState;
+  }>({ popular: { status: "idle" }, latest: { status: "idle" } });
+  const [addingKeys, setAddingKeys] = useState<ReadonlySet<string>>(new Set());
+  const [addedKeys, setAddedKeys] = useState<ReadonlySet<string>>(new Set());
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const browseAbortRef = useRef<AbortController | null>(null);
+  const homeAbortRef = useRef<AbortController | null>(null);
+  const searchRequestRef = useRef(0);
+  const browseRequestRef = useRef(0);
+  const loadMoreInFlightRef = useRef(false);
 
   const installedSource = useMemo(
     () =>
@@ -105,19 +165,12 @@ export function ServerSourceBrowserScreen({
     [installed.data, registryId, sourceId],
   );
   const isSuwayomi = isSuwayomiServerSource(installedSource);
+  const sourceDisplay = useMemo(
+    () => (installedSource ? toSearchSourceDisplay(installedSource) : null),
+    [installedSource],
+  );
 
   const { runWithSession } = useSelfHostedServerSession(installedSource, strings.unsupported);
-
-  const [sourcesState, setSourcesState] = useState<SourcesState>({ status: "idle" });
-  const [languageFilter, setLanguageFilter] = useState<ServerSourceLanguageFilter>("zh");
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [searchState, setSearchState] = useState<SearchState>({ status: "idle" });
-  const [addingKeys, setAddingKeys] = useState<ReadonlySet<string>>(new Set());
-  const [addedKeys, setAddedKeys] = useState<ReadonlySet<string>>(new Set());
-  const searchAbortRef = useRef<AbortController | null>(null);
-  const searchRequestRef = useRef(0);
-  const loadMoreInFlightRef = useRef(false);
 
   const screenTitle = installedSource?.name ?? strings.title;
   const nativeHeaderOptions = createNemuNativeScreenOptions(tokens, screenTitle);
@@ -143,16 +196,22 @@ export function ServerSourceBrowserScreen({
 
   useEffect(() => {
     void loadSources();
-    return () => {
-      searchAbortRef.current?.abort();
-    };
   }, [loadSources]);
+
+  // Cancel every in-flight server call when the screen unmounts.
+  useEffect(
+    () => () => {
+      searchAbortRef.current?.abort();
+      browseAbortRef.current?.abort();
+      homeAbortRef.current?.abort();
+    },
+    [],
+  );
 
   const filteredSources = useMemo(() => {
     if (sourcesState.status !== "ready") return [];
     return filterServerSourcesByLanguage(sourcesState.sources, languageFilter);
   }, [sourcesState, languageFilter]);
-
   const selectedSource = useMemo(
     () =>
       sourcesState.status === "ready"
@@ -161,25 +220,147 @@ export function ServerSourceBrowserScreen({
     [sourcesState, selectedSourceId],
   );
 
-  const selectSource = useCallback((source: SelfHostedSource) => {
-    searchAbortRef.current?.abort();
-    searchAbortRef.current = null;
-    setSelectedSourceId(source.id);
-    setSearchState({ status: "idle" });
-    setAddedKeys(new Set());
-  }, []);
+  const setHomeSection = useCallback(
+    (section: "popular" | "latest", state: HomeSectionState) => {
+      setHomeState((current) => ({ ...current, [section]: state }));
+    },
+    [],
+  );
+
+  const loadHome = useCallback(
+    async (sourceId: string) => {
+      homeAbortRef.current?.abort();
+      const controller = new AbortController();
+      homeAbortRef.current = controller;
+      setHomeState({ popular: { status: "loading" }, latest: { status: "loading" } });
+      const loadSection = async (type: "POPULAR" | "LATEST") => {
+        const section = type === "POPULAR" ? "popular" : "latest";
+        const limit = type === "POPULAR" ? FEATURED_LIMIT : UPDATES_LIMIT;
+        try {
+          const items = await runWithSession(async (session) => {
+            if (!session.source.browseSource) {
+              throw new Error(strings.unsupported);
+            }
+            const pageResult = await session.source.browseSource(sourceId, type, 1, controller.signal);
+            return mapAidokuMangasToLiveSearchMangaWithImageRequests(
+              session.source,
+              pageResult.entries,
+              { signal: controller.signal },
+            );
+          });
+          if (controller.signal.aborted) return;
+          setHomeSection(section, { status: "ready", items: items.slice(0, limit) });
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          setHomeSection(section, {
+            status: "error",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        }
+      };
+      // Both sections load in parallel; each shows its own spinner/error.
+      await Promise.all([loadSection("POPULAR"), loadSection("LATEST")]);
+    },
+    [runWithSession, setHomeSection, strings.unsupported],
+  );
+
+  const runBrowse = useCallback(
+    async (
+      sourceId: string,
+      type: "POPULAR" | "LATEST",
+      page: number,
+      append: boolean,
+    ) => {
+      browseAbortRef.current?.abort();
+      const controller = new AbortController();
+      browseAbortRef.current = controller;
+      const requestId = ++browseRequestRef.current;
+      const previousItems =
+        append && browseState.status !== "idle" ? browseState.items : [];
+      setBrowseState({ status: "loading", items: previousItems, page });
+      try {
+        const result = await runWithSession(async (session) => {
+          if (!session.source.browseSource) {
+            throw new Error(strings.unsupported);
+          }
+          const pageResult = await session.source.browseSource(sourceId, type, page, controller.signal);
+          const items = await mapAidokuMangasToLiveSearchMangaWithImageRequests(
+            session.source,
+            pageResult.entries,
+            { signal: controller.signal },
+          );
+          return { items, hasMore: pageResult.hasNextPage };
+        });
+        if (requestId !== browseRequestRef.current || controller.signal.aborted) return;
+        setBrowseState({
+          status: "ready",
+          items: [...previousItems, ...result.items],
+          page,
+          hasMore: result.hasMore,
+        });
+      } catch (error) {
+        if (requestId !== browseRequestRef.current || controller.signal.aborted) return;
+        setBrowseState({
+          status: "error",
+          items: previousItems,
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+    [browseState, runWithSession, strings.unsupported],
+  );
+
+  const loadMode = useCallback(
+    (nextMode: BrowseMode, sourceId: string) => {
+      if (nextMode === "home") {
+        void loadHome(sourceId);
+        return;
+      }
+      void runBrowse(sourceId, nextMode === "latest" ? "LATEST" : "POPULAR", 1, false);
+    },
+    [loadHome, runBrowse],
+  );
+
+  const selectSource = useCallback(
+    (source: SelfHostedSource) => {
+      searchAbortRef.current?.abort();
+      setSearchState({ status: "idle" });
+      setQuery("");
+      setBrowseState({ status: "idle" });
+      setHomeState({ popular: { status: "idle" }, latest: { status: "idle" } });
+      setSelectedSourceId(source.id);
+      loadMode(mode, source.id);
+    },
+    [loadMode, mode],
+  );
+
+  const handleModeChange = useCallback(
+    (nextMode: BrowseMode) => {
+      if (nextMode === mode) return;
+      setMode(nextMode);
+      // Leaving search: the mode's own content takes the list back.
+      searchAbortRef.current?.abort();
+      setSearchState({ status: "idle" });
+      setBrowseState({ status: "idle" });
+      setHomeState({ popular: { status: "idle" }, latest: { status: "idle" } });
+      if (selectedSource) {
+        loadMode(nextMode, selectedSource.id);
+      }
+    },
+    [loadMode, mode, selectedSource],
+  );
 
   const runSearch = useCallback(
     async (page: number, append: boolean) => {
       if (!selectedSource) return;
-      const trimmed = query.trim();
-      if (!trimmed) return;
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) return;
       searchAbortRef.current?.abort();
       const controller = new AbortController();
       searchAbortRef.current = controller;
       const requestId = ++searchRequestRef.current;
       const previousItems =
-        append && searchState.status === "ready" ? searchState.items : [];
+        append && searchState.status !== "idle" ? searchState.items : [];
       setSearchState({ status: "loading", items: previousItems, page });
       try {
         const result = await runWithSession(async (session) => {
@@ -188,7 +369,7 @@ export function ServerSourceBrowserScreen({
           }
           const pageResult = await session.source.searchServerSource(
             selectedSource.id,
-            trimmed,
+            trimmedQuery,
             page,
             controller.signal,
           );
@@ -207,15 +388,12 @@ export function ServerSourceBrowserScreen({
           hasMore: result.hasMore,
         });
       } catch (error) {
-        if (controller.signal.aborted || requestId !== searchRequestRef.current) return;
+        if (requestId !== searchRequestRef.current || controller.signal.aborted) return;
         setSearchState({
           status: "error",
           items: previousItems,
           detail: error instanceof Error ? error.message : String(error),
         });
-      } finally {
-        if (searchAbortRef.current === controller) searchAbortRef.current = null;
-        loadMoreInFlightRef.current = false;
       }
     },
     [query, runWithSession, searchState, selectedSource, strings.unsupported],
@@ -227,15 +405,46 @@ export function ServerSourceBrowserScreen({
 
   const cancelSearch = useCallback(() => {
     searchAbortRef.current?.abort();
-    searchAbortRef.current = null;
+    setSearchState({ status: "idle" });
   }, []);
 
-  const loadMore = useCallback(() => {
+  const loadMoreSearch = useCallback(() => {
     if (searchState.status !== "ready" || !searchState.hasMore) return;
     if (loadMoreInFlightRef.current) return;
     loadMoreInFlightRef.current = true;
-    void runSearch(searchState.page + 1, true);
+    void runSearch(searchState.page + 1, true).finally(() => {
+      loadMoreInFlightRef.current = false;
+    });
   }, [runSearch, searchState]);
+
+  const loadMoreBrowse = useCallback(() => {
+    if (!selectedSource || browseState.status !== "ready" || !browseState.hasMore) return;
+    if (loadMoreInFlightRef.current) return;
+    loadMoreInFlightRef.current = true;
+    void runBrowse(
+      selectedSource.id,
+      mode === "latest" ? "LATEST" : "POPULAR",
+      browseState.page + 1,
+      true,
+    ).finally(() => {
+      loadMoreInFlightRef.current = false;
+    });
+  }, [browseState, mode, runBrowse, selectedSource]);
+
+  const openManga = useCallback(
+    (item: MobileLiveSearchManga) => {
+      setMobileSourceDetailSeed(registryId, sourceId, item.id, item);
+      router.push(
+        getMobileSourceMangaHref({
+          registryId,
+          sourceId,
+          mangaId: item.id,
+          mangaTitle: item.title,
+        }),
+      );
+    },
+    [registryId, sourceId],
+  );
 
   const addToLibrary = useCallback(
     async (item: MobileLiveSearchManga) => {
@@ -248,8 +457,27 @@ export function ServerSourceBrowserScreen({
           }
           await session.source.addToLibrary({ key: item.id, title: item.title });
         });
-        setAddedKeys((current) => new Set(current).add(item.id));
-        emitMobileLibraryDataChanged();
+        // The server library and the main Library tab share entries, so
+        // the title also lands in the local library. If the local write
+        // fails the server add stands (no rollback) and the button stays
+        // usable so the user can retry.
+        if (sourceDisplay) {
+          try {
+            const imported = makeLiveSearchLibraryImport(sourceDisplay, item);
+            await store.saveLibraryItem(imported.item);
+            await store.saveSourceLink(imported.sourceLink);
+            emitMobileDataChanged("library");
+            setAddedKeys((current) => new Set(current).add(item.id));
+          } catch {
+            setSearchState((current) =>
+              current.status === "ready" || current.status === "error"
+                ? { status: "error", items: current.items, detail: strings.addFailed }
+                : current,
+            );
+          }
+        } else {
+          setAddedKeys((current) => new Set(current).add(item.id));
+        }
       } catch {
         // The button stays usable; the failure is shown on the card below
         // via the search error slot on the next render is too indirect, so
@@ -267,23 +495,51 @@ export function ServerSourceBrowserScreen({
         });
       }
     },
-    [addingKeys, addedKeys, runWithSession, strings.addFailed, strings.unsupported],
+    [addingKeys, addedKeys, runWithSession, sourceDisplay, store, strings.addFailed, strings.unsupported],
   );
 
-  const openManga = useCallback(
-    (item: MobileLiveSearchManga) => {
-      setMobileSourceDetailSeed(registryId, sourceId, item.id, item);
-      router.push(
-        getMobileSourceMangaHref({
-          registryId,
-          sourceId,
-          mangaId: item.id,
-          mangaTitle: item.title,
-        }),
-      );
-    },
-    [registryId, sourceId],
+  const searching = searchState.status === "loading";
+  const searchItems = useMemo(
+    () =>
+      searchState.status === "ready" ||
+      searchState.status === "loading" ||
+      searchState.status === "error"
+        ? searchState.items
+        : [],
+    [searchState],
   );
+  const searchError = searchState.status === "error" ? searchState.detail : null;
+  const searchHasMore = searchState.status === "ready" && searchState.hasMore;
+  const searchActive = searchState.status !== "idle";
+  const browseItems =
+    browseState.status === "ready" || browseState.status === "loading" || browseState.status === "error"
+      ? browseState.items
+      : [];
+  const browseError = browseState.status === "error" ? browseState.detail : null;
+  const browseHasMore = browseState.status === "ready" && browseState.hasMore;
+  const browseLoading = browseState.status === "loading";
+  const showRows = !searchActive && mode === "latest";
+  const listItems = searchActive ? searchItems : mode === "home" ? [] : browseItems;
+
+  // The button state reflects the local library too: a title that is
+  // already in the main Library tab shows as already added.
+  useEffect(() => {
+    if (!sourceDisplay || libraryEntries.length === 0) return;
+    setAddedKeys((current) => {
+      const next = new Set(current);
+      let changed = false;
+      for (const item of searchItems) {
+        if (
+          !next.has(item.id) &&
+          findLibraryEntryForLiveSearchResult(libraryEntries, sourceDisplay, item)
+        ) {
+          next.add(item.id);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [libraryEntries, searchItems, sourceDisplay]);
 
   const renderResult = useCallback(
     ({ item }: { item: MobileLiveSearchManga }) => {
@@ -311,20 +567,21 @@ export function ServerSourceBrowserScreen({
     [addedKeys, addingKeys, addToLibrary, openManga, strings],
   );
 
-  const searching = searchState.status === "loading";
-  const searchItems =
-    searchState.status === "ready" || searchState.status === "loading" || searchState.status === "error"
-      ? searchState.items
-      : [];
-  const searchError = searchState.status === "error" ? searchState.detail : null;
-  const hasMore = searchState.status === "ready" && searchState.hasMore;
+  const renderUpdateRow = useCallback(
+    ({ item }: { item: MobileLiveSearchManga }) => (
+      <ServerSourceUpdateRow item={item} onPress={() => openManga(item)} />
+    ),
+    [openManga],
+  );
+
+  const featuredCardWidth = Math.round(windowWidth * 0.82);
 
   // One FlatList is the screen's only scroller: the source picker, the
   // search box and every state live in its header, the results are its
   // rows. (PageScaffold wraps its children in a ScrollView, so a FlatList
   // inside it would nest two virtualized scrollers.)
   const listHeader = (
-    <View style={styles.headerBlock}>
+    <View style={[styles.headerBlock, { paddingTop: insets.top + 12 }]}>
       {installed.loading ? (
         <View style={styles.center}>
           <ActivityIndicator />
@@ -413,6 +670,16 @@ export function ServerSourceBrowserScreen({
           )}
           {selectedSource ? (
             <>
+              <ReaderSegmentedChipRow
+                accessibilityLabel={strings.mode}
+                options={[
+                  { value: "home", label: strings.home },
+                  { value: "popular", label: strings.popular },
+                  { value: "latest", label: strings.latest },
+                ]}
+                value={mode}
+                onChange={handleModeChange}
+              />
               <NemuText style={[styles.sectionLabel, { color: tokens.mutedForeground }]}>
                 {strings.searchThisSource}
               </NemuText>
@@ -484,6 +751,120 @@ export function ServerSourceBrowserScreen({
     </View>
   );
 
+  const listFooter = (
+    <>
+      {mode === "home" && !searchActive && selectedSource ? (
+        <View style={styles.homeSections}>
+          <NemuText style={[styles.homeSectionTitle, { color: tokens.foreground }]}>
+            {strings.popularNewTitles}
+          </NemuText>
+          {homeState.popular.status === "loading" ? (
+            <ActivityIndicator size="small" color={tokens.primary} style={styles.homeSpinner} />
+          ) : homeState.popular.status === "error" ? (
+            <NemuInlineEmptyState
+              icon="warning-outline"
+              title={strings.browseFailed}
+              description={homeState.popular.detail}
+            />
+          ) : homeState.popular.status === "ready" && homeState.popular.items.length === 0 ? (
+            <NemuInlineEmptyState icon="search-outline" title={strings.noResults} />
+          ) : homeState.popular.status === "ready" ? (
+            <ScrollView
+              horizontal
+              scrollsToTop={false}
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.featuredScrollContent}
+              style={styles.featuredScroll}
+            >
+              {homeState.popular.items.map((item) => (
+                <ServerSourceFeaturedCard
+                  key={item.id}
+                  item={item}
+                  width={featuredCardWidth}
+                  onPress={() => openManga(item)}
+                />
+              ))}
+            </ScrollView>
+          ) : null}
+          <View style={styles.updatesHeader}>
+            <NemuText style={[styles.homeSectionTitle, { color: tokens.foreground }]}>
+              {strings.latestUpdates}
+            </NemuText>
+            <NemuPressable
+              accessibilityRole="button"
+              accessibilityLabel={strings.viewAll}
+              hapticFeedback="selection"
+              onPress={() => handleModeChange("latest")}
+              pressedScale={0.97}
+              style={styles.viewAllButton}
+            >
+              <NemuText style={[styles.viewAllLabel, { color: tokens.primary }]}>
+                {strings.viewAll}
+              </NemuText>
+              <Ionicons name="chevron-forward" size={16} color={tokens.primary} />
+            </NemuPressable>
+          </View>
+          {homeState.latest.status === "loading" ? (
+            <ActivityIndicator size="small" color={tokens.primary} style={styles.homeSpinner} />
+          ) : homeState.latest.status === "error" ? (
+            <NemuInlineEmptyState
+              icon="warning-outline"
+              title={strings.browseFailed}
+              description={homeState.latest.detail}
+            />
+          ) : homeState.latest.status === "ready" && homeState.latest.items.length === 0 ? (
+            <NemuInlineEmptyState icon="search-outline" title={strings.noResults} />
+          ) : homeState.latest.status === "ready" ? (
+            <ServerSourceUpdateList items={homeState.latest.items} onOpen={openManga} />
+          ) : null}
+        </View>
+      ) : null}
+      {!searchActive && mode !== "home" && browseError && browseItems.length === 0 ? (
+        <NemuInlineEmptyState
+          icon="warning-outline"
+          title={strings.browseFailed}
+          description={browseError}
+        />
+      ) : null}
+      {searchActive && searchHasMore ? (
+        <View style={styles.loadMore}>
+          <NemuButton
+            accessibilityLabel={strings.loadMore}
+            disabled={searching}
+            label={searching ? strings.loadingMore : strings.loadMore}
+            loading={searching}
+            onPress={loadMoreSearch}
+            size="sm"
+            variant="secondary"
+          />
+        </View>
+      ) : null}
+      {!searchActive && mode !== "home" && browseHasMore ? (
+        <View style={styles.loadMore}>
+          <NemuButton
+            accessibilityLabel={strings.loadMore}
+            disabled={browseLoading}
+            label={browseLoading ? strings.loadingMore : strings.loadMore}
+            loading={browseLoading}
+            onPress={loadMoreBrowse}
+            size="sm"
+            variant="secondary"
+          />
+        </View>
+      ) : null}
+    </>
+  );
+
+  const listEmpty =
+    (searchActive && searchState.status === "ready" && selectedSource) ||
+    (!searchActive && mode !== "home" && browseState.status === "ready") ? (
+      <NemuInlineEmptyState
+        icon="search-outline"
+        title={strings.noResults}
+        description={strings.noResultsHint}
+      />
+    ) : undefined;
+
   return (
     <>
       {showHeader ? (
@@ -491,43 +872,174 @@ export function ServerSourceBrowserScreen({
       ) : null}
       <View style={[styles.root, { backgroundColor: tokens.background }]}>
         <FlatList
-          data={searchItems}
+          key={showRows ? "rows" : "grid"}
+          data={listItems}
           keyExtractor={(item) => item.id}
-          numColumns={3}
-          columnWrapperStyle={styles.resultRow}
+          renderItem={showRows ? renderUpdateRow : renderResult}
+          numColumns={showRows ? 1 : 3}
+          columnWrapperStyle={showRows ? undefined : styles.resultRow}
+          showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.resultList,
             { paddingBottom: insets.bottom + TAB_BAR_CLEARANCE },
           ]}
           ListHeaderComponent={listHeader}
-          ListEmptyComponent={
-            searchState.status === "ready" && selectedSource ? (
-              <NemuInlineEmptyState
-                icon="search-outline"
-                title={strings.noResults}
-                description={strings.noResultsHint}
-              />
-            ) : undefined
-          }
-          ListFooterComponent={
-            hasMore ? (
-              <View style={styles.loadMore}>
-                <NemuButton
-                  accessibilityLabel={strings.loadMore}
-                  disabled={searching}
-                  label={searching ? strings.loadingMore : strings.loadMore}
-                  loading={searching}
-                  onPress={loadMore}
-                  size="sm"
-                  variant="secondary"
-                />
-              </View>
-            ) : undefined
-          }
-          renderItem={renderResult}
+          ListFooterComponent={listFooter}
+          ListEmptyComponent={listEmpty}
         />
       </View>
     </>
+  );
+}
+
+type ServerSourceFeaturedCardProps = {
+  item: MobileLiveSearchManga;
+  width: number;
+  onPress: () => void;
+};
+
+/**
+ * One featured card: a glass surface with the cover on the left and the
+ * title, description and up to three genre chips on the right. Tapping
+ * opens the detail page.
+ */
+function ServerSourceFeaturedCard({ item, width, onPress }: ServerSourceFeaturedCardProps) {
+  const { tokens } = useNemuTheme();
+  const genres = (item.tags ?? []).slice(0, 3);
+  return (
+    <NemuPressable
+      accessibilityRole="button"
+      accessibilityLabel={item.title}
+      hapticFeedback="selection"
+      onPress={onPress}
+      pressedScale={0.98}
+      style={[styles.featuredCard, { width }]}
+    >
+      <GlassSurface style={styles.featuredShell} contentStyle={styles.featuredContent}>
+        <View
+          style={[
+            styles.featuredCover,
+            { backgroundColor: tokens.muted, borderColor: tokens.coverBorder },
+          ]}
+        >
+          <ExploreCoverImage
+            source={
+              item.cover
+                ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
+                : null
+            }
+            title={item.title}
+          />
+        </View>
+        <View style={styles.featuredText}>
+          <NemuText numberOfLines={2} style={[styles.featuredTitle, { color: tokens.foreground }]}>
+            {item.title}
+          </NemuText>
+          {item.description ? (
+            <NemuText
+              numberOfLines={3}
+              style={[styles.featuredDescription, { color: tokens.mutedForeground }]}
+            >
+              {item.description}
+            </NemuText>
+          ) : null}
+          {genres.length > 0 ? (
+            <View style={styles.featuredTags}>
+              {genres.map((tag) => (
+                <MobileChip
+                  key={tag}
+                  variant="static"
+                  size="sm"
+                  label={tag}
+                  accessibilityLabel={tag}
+                />
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </GlassSurface>
+    </NemuPressable>
+  );
+}
+
+type ServerSourceUpdateListProps = {
+  items: MobileLiveSearchManga[];
+  onOpen: (item: MobileLiveSearchManga) => void;
+};
+
+/** The latest-updates rows in one glass surface, divided by hairlines. */
+function ServerSourceUpdateList({ items, onOpen }: ServerSourceUpdateListProps) {
+  const { tokens } = useNemuTheme();
+  return (
+    <GlassSurface style={styles.updatesShell} contentStyle={styles.updatesContent}>
+      {items.map((item, index) => (
+        <View
+          key={item.id}
+          style={[
+            styles.updateRowWrap,
+            index < items.length - 1
+              ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: tokens.border }
+              : null,
+          ]}
+        >
+          <ServerSourceUpdateRow item={item} onPress={() => onOpen(item)} />
+        </View>
+      ))}
+    </GlassSurface>
+  );
+}
+
+type ServerSourceUpdateRowProps = {
+  item: MobileLiveSearchManga;
+  onPress: () => void;
+};
+
+/**
+ * One latest-updates row: a small cover, the title, and the author line
+ * with a chevron. Suwayomi source listings carry no latest-chapter info,
+ * so the row shows title + author instead of a chapter line.
+ */
+function ServerSourceUpdateRow({ item, onPress }: ServerSourceUpdateRowProps) {
+  const { tokens } = useNemuTheme();
+  return (
+    <NemuPressable
+      accessibilityRole="button"
+      accessibilityLabel={item.title}
+      hapticFeedback="selection"
+      onPress={onPress}
+      pressedScale={0.98}
+      style={styles.updateRow}
+    >
+      <View
+        style={[
+          styles.updateCover,
+          { backgroundColor: tokens.muted, borderColor: tokens.coverBorder },
+        ]}
+      >
+        <ExploreCoverImage
+          source={
+            item.cover
+              ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
+              : null
+          }
+          title={item.title}
+        />
+      </View>
+      <View style={styles.updateText}>
+        <NemuText numberOfLines={2} style={[styles.updateTitle, { color: tokens.foreground }]}>
+          {item.title}
+        </NemuText>
+        {item.authors?.length ? (
+          <NemuText
+            numberOfLines={1}
+            style={[styles.updateSubtitle, { color: tokens.mutedForeground }]}
+          >
+            {item.authors.join(", ")}
+          </NemuText>
+        ) : null}
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={tokens.mutedForeground} />
+    </NemuPressable>
   );
 }
 
@@ -607,5 +1119,115 @@ const styles = StyleSheet.create({
   retryRow: {
     alignItems: "center",
     paddingVertical: 8,
+  },
+  homeSections: {
+    gap: 16,
+    paddingTop: 4,
+  },
+  homeSectionTitle: {
+    fontSize: 20,
+    lineHeight: 25,
+    fontWeight: nemuFontWeight.semibold,
+  },
+  homeSpinner: {
+    paddingVertical: 24,
+  },
+  featuredScroll: {
+    marginHorizontal: -16,
+  },
+  featuredScrollContent: {
+    gap: 12,
+    paddingHorizontal: 16,
+  },
+  featuredCard: {
+    flexShrink: 0,
+  },
+  featuredShell: {
+    width: "100%",
+  },
+  featuredContent: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 12,
+  },
+  featuredCover: {
+    width: 110,
+    aspectRatio: 3 / 4,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+  },
+  featuredText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  featuredTitle: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: nemuFontWeight.semibold,
+  },
+  featuredDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  featuredTags: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  updatesHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  viewAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    paddingVertical: 4,
+  },
+  viewAllLabel: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: nemuFontWeight.semibold,
+  },
+  updatesShell: {
+    width: "100%",
+  },
+  updatesContent: {
+    flexDirection: "column",
+  },
+  updateRowWrap: {
+    paddingHorizontal: 12,
+  },
+  updateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+  },
+  updateCover: {
+    width: 56,
+    aspectRatio: 3 / 4,
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.sm,
+  },
+  updateText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  updateTitle: {
+    fontSize: 15,
+    lineHeight: 19,
+    fontWeight: nemuFontWeight.semibold,
+  },
+  updateSubtitle: {
+    fontSize: 13,
+    lineHeight: 17,
   },
 });
