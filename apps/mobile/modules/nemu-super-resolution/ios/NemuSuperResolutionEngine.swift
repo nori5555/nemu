@@ -201,8 +201,14 @@ enum NemuSuperResolutionEngine {
       shape: [1, 3, NSNumber(value: tileSize), NSNumber(value: tileSize)], dataType: .float32)
     let target = input.dataPointer.bindMemory(to: Float.self, capacity: 3 * plane)
     for row in 0..<tileSize {
+      // A cover smaller than the tile has no pixel at (x + col, y + row)
+      // past its edge (twmanga ships 180x240 covers): replicate the edge
+      // pixel instead of reading past the buffer — that read trapped the
+      // app (EXC_BREAKPOINT in this loop, 2026-11-13).
+      let py = min(y + row, image.height - 1)
       for col in 0..<tileSize {
-        let src = ((y + row) * image.width + (x + col)) * 4
+        let px = min(x + col, image.width - 1)
+        let src = (py * image.width + px) * 4
         let index = row * tileSize + col
         target[index] = Float(image.pixels[src]) / 255
         target[plane + index] = Float(image.pixels[src + 1]) / 255
@@ -244,6 +250,10 @@ enum NemuSuperResolutionEngine {
             guard weight > 0 else { continue }
             let dstRow = tileY * scale + outRow
             let dstCol = tileX * scale + outCol
+            // A tile is always 256x256, but a small cover's output is
+            // smaller (180x240 -> 720x960): only blend inside the output,
+            // or the write below runs past the buffers and traps as well.
+            guard dstRow < outHeight, dstCol < outWidth else { continue }
             let dst = dstRow * outWidth + dstCol
             let src = outRow * tileSize * scale + outCol
             weights[dst] += weight
