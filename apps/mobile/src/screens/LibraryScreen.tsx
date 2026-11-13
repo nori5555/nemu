@@ -354,7 +354,7 @@ const LibraryGridItem = memo(function LibraryGridItem({
         {cover}
       </ZoomSource>
     ),
-    [enableZoom, zoomId],
+    [zoomId],
   );
 
   return (
@@ -2351,6 +2351,7 @@ export function LibraryScreen({
               getActions={getEntryActions}
               onLongPress={handleGridItemLongPress}
               placeholderWidth={gridItemWidth}
+              enableZoom={false}
             />
           </ExploreDissolveTarget>
         ) : (
