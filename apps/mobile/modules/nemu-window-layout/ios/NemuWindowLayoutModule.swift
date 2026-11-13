@@ -3903,6 +3903,9 @@ final class NemuZoomTargetView: ExpoView {
     }
     registerAlignmentIfNeeded()
     observeSettle()
+    // The window arrives with the push: if the transition was set too late
+    // for it, this pass still lands it on the host in time for the pop.
+    setup()
     scheduleSetup()
   }
 
@@ -4039,6 +4042,19 @@ final class NemuZoomTargetView: ExpoView {
     // the transition.
     guard #available(iOS 18.0, *), !alignsToSelf, !zoomId.isEmpty, let owner = owningViewController() else { return }
     let controller = NemuZoomTargetView.pushedController(for: owner)
+    // A screen that is the root of a nested stack (the sources detail pushed
+    // from a tab) is pushed by its host, not by itself: the transition
+    // belongs to the host. While the stack has not joined its host yet the
+    // host cannot be resolved, and setting the transition on this screen
+    // would reach nothing — the push and the pop both belong to the host.
+    // Defer instead of committing to the wrong controller: the retry on the
+    // next main-queue turn runs after the stack has joined its host and
+    // before the outer push reads the transition.
+    if controller === owner,
+       let stack = owner.navigationController,
+       stack.viewControllers.first === owner {
+      return
+    }
     let id = zoomId
     let key = "\(id)|\(interactiveDismiss)"
     // Assigning the same transition again (the second setup pass, a
