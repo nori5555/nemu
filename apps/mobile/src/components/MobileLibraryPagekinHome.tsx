@@ -19,6 +19,7 @@ import {
   MobileCachedImage,
   nemuFontWeight,
   NemuText,
+  useMobilePageBleedStyles,
   useNemuTheme,
 } from "@/design-system";
 import { MobileExploreCoverPlaceholder } from "@/components/explore/MobileExploreCoverPlaceholder";
@@ -352,6 +353,13 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
 }) {
   const { tokens, scheme } = useNemuTheme();
   const { width: viewportWidth } = useWindowDimensions();
+  // The row is the ListHeaderComponent of a scaffold FlatList whose content
+  // is gutter-padded, so without a bleed the row's frame ends one gutter
+  // short of the screen edge and the peeking card is cut off 20 pt early.
+  // The bleed restores the geometry rowCardWidth was sized for: first card
+  // one ROW_CONTENT_PADDING in from the viewport edge, the next card peeking
+  // right up to the screen edge.
+  const pageBleed = useMobilePageBleedStyles();
 
   // The row's scroll state: 0 at rest, 1 while it scrolls. A drag spreads
   // the cards; the gather waits 120 ms after the finger lifts so a flick's
@@ -528,7 +536,7 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
             paddingTop: 12,
             paddingBottom: 32,
           }}
-          style={styles.row}
+          style={[styles.row, pageBleed.frame]}
         >
           {rest.map((entry, index) => (
             <PagekinRowCard
