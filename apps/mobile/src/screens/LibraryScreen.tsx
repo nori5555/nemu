@@ -1,3 +1,4 @@
+import { MobileLibraryCarousel } from "@/components/MobileLibraryCarousel";
 import { MobileQuickActionMenu, mobileNativeQuickMenuAvailable } from "@/components/MobileQuickActionMenu";
 import { requestMobileAddSourceSheet } from "@/lib/mobileAddSourceSheetRequest";
 import { useMobileAdaptiveLayout } from "@/lib/MobileWindowLayoutContext";
@@ -17,6 +18,7 @@ import { orderMobileTitleQuickActions } from "@/lib/mobileQuickActionOrder";
 import {
   AppState,
   FlatList,
+  ScrollView,
   Platform,
   StyleSheet,
   Text,
@@ -87,6 +89,7 @@ import {
   NemuButton,
   nemuColorWithAlpha,
   NemuPressable,
+  createNemuBrandWordmarkStyle,
   PageHeader,
   PageListScaffold,
   PageScaffold,
@@ -289,10 +292,18 @@ const LibraryGridItem = memo(function LibraryGridItem({
   getActions,
   onLongPress,
   placeholderWidth,
+  coverOnly = false,
+  cardStyle,
+  enableZoom = true,
+  onSelect,
 }: {
   entry: LibraryEntry;
   /** Design-explore: draws the cloth-book placeholder at this width. */
   placeholderWidth?: number;
+  coverOnly?: boolean;
+  cardStyle?: StyleProp<ViewStyle>;
+  enableZoom?: boolean;
+  onSelect?: () => void;
   /** Kept per title while its card reads the same (stabilizeMobileLibraryCardProgress). */
   cardProgress?: MobileLibraryCardProgress;
   strings: MobileStrings;
@@ -339,20 +350,22 @@ const LibraryGridItem = memo(function LibraryGridItem({
   }, [entry, item.cover, item.coverHeaders, zoomId]);
   const wrapCover = useCallback(
     (cover: ReactNode) => (
-      <ZoomSource zoomId={zoomId} style={styles.gridZoomSource}>
+      <ZoomSource zoomId={`${zoomId}${enableZoom ? "" : ":rail"}`} style={styles.gridZoomSource}>
         {cover}
       </ZoomSource>
     ),
-    [zoomId],
+    [enableZoom, zoomId],
   );
 
   return (
     <MobileQuickActionMenu actions={actions} cornerRadius={MANGA_CARD_COVER_RADIUS}>
     <MangaCard
       item={item}
+      coverOnly={coverOnly}
+      cardStyle={cardStyle}
       onLongPress={!mobileNativeQuickMenuAvailable && onLongPress ? handleLongPress : undefined}
-      onPress={designExplore ? exploreOpen : undefined}
-      wrapCover={designExplore ? wrapCover : undefined}
+      onPress={onSelect ? () => onSelect() : designExplore ? exploreOpen : undefined}
+      wrapCover={designExplore && enableZoom ? wrapCover : undefined}
       placeholder={
         designExplore && placeholderWidth ? (
           <MobileExploreCoverPlaceholder title={getEntryTitle(entry)} width={placeholderWidth} />
@@ -864,7 +877,7 @@ export function LibraryScreen({
   mode = "library",
 }: LibraryScreenProps = {}) {
   const { verticalBarSide, width: windowWidth, height: windowHeight, hasFoldRegion } = useMobileAdaptiveLayout();
-  const { scheme, tokens } = useNemuTheme();
+  const { scheme, tokens, reduceMotion } = useNemuTheme();
   const usesNativeHeader = usesNemuNativeHeader;
   const store = useMobileDataStore();
   const {
@@ -894,6 +907,7 @@ export function LibraryScreen({
     : sharedSelectedCollectionId;
   const setSelectedCollectionId = setMobileLibraryCollectionSelection;
   const [showTitleMenuSheet, setShowTitleMenuSheet] = useState(false);
+  const [selectedShelfItemId, setSelectedShelfItemId] = useState<string | null>(null);
   const [showCreatePanel, setShowCreatePanel] = useState(false);
   const [showManagePanel, setShowManagePanel] = useState(false);
   const [manageCollectionPresentation, setManageCollectionPresentation] =
@@ -1174,7 +1188,11 @@ export function LibraryScreen({
     () => (poseScrollHoldPadding > 0 ? { paddingBottom: poseScrollHoldPadding } : undefined),
     [poseScrollHoldPadding],
   );
-  const title = selectedCollection?.name ?? strings.nav.library;
+  // A library root keeps the brand in the page header; the active collection
+  // is presented as the scope control, not as a replacement for Nemu branding.
+  const title = isCollectionRoute
+    ? selectedCollection?.name ?? strings.nav.library
+    : "Nemu";
   const loading =
     libraryLoading ||
     collections.loading ||
@@ -1904,6 +1922,19 @@ export function LibraryScreen({
         }
       : null;
   const titleMenuAnchor = titleMenu ? <MobileLibraryTitleMenuAnchor {...titleMenu} /> : null;
+  const pageTitleAdornment: ReactNode = !usesNativeHeader && !isCollectionRoute ? (
+    <NemuPressable
+      accessibilityRole="button"
+      accessibilityLabel={strings.library.titleMenuHint}
+      onPress={() => setShowTitleMenuSheet(true)}
+      style={[styles.scopeChip, { borderColor: tokens.border, backgroundColor: tokens.card }]}
+    >
+      <Text numberOfLines={1} style={[styles.scopeChipText, { color: tokens.foreground }]}>
+        {selectedCollection?.name ?? strings.library.all}
+      </Text>
+      <Ionicons name="chevron-down" size={16} color={tokens.mutedForeground} />
+    </NemuPressable>
+  ) : undefined;
   const nativeHeaderOptions = (
     screenTitle: string,
   ) => createNemuNativeScreenOptions(tokens, screenTitle);
@@ -2353,6 +2384,18 @@ export function LibraryScreen({
     () => chunkMobileGridRows(gridEntries, gridColumns),
     [gridEntries, gridColumns],
   );
+  const selectedShelfEntry = gridEntries.find((entry) => entry.item.libraryItemId === selectedShelfItemId) ?? gridEntries[0] ?? null;
+  const showCarousel = designExplore && !showSkeleton && gridEntries.length > 0;
+  const handleShelfSelect = useCallback((entry: LibraryEntry) => {
+    setSelectedShelfItemId(entry.item.libraryItemId);
+  }, []);
+  const shelfCardRenderer = useCallback((entry: LibraryEntry, width: number) => (
+    <View style={{ width }}>
+      <ExploreDissolveTarget id={entry.item.libraryItemId}>
+        <LibraryGridItem entry={entry} cardProgress={cardProgress.get(entry.item.libraryItemId)} strings={strings} installedSources={installedSources.data} getActions={getEntryActions} onLongPress={handleGridItemLongPress} onSelect={() => handleShelfSelect(entry)} enableZoom={false} placeholderWidth={width} />
+      </ExploreDissolveTarget>
+    </View>
+  ), [cardProgress, getEntryActions, handleGridItemLongPress, handleShelfSelect, installedSources.data, strings]);
   const showEmptyCollectionHero = shouldShowMobileEmptyCollectionHero({
     loading: showSkeleton,
     hasSelectedCollection: Boolean(selectedCollection),
@@ -2380,8 +2423,9 @@ export function LibraryScreen({
       getEntryActions,
       installedSources: installedSources.data,
       strings,
+      selectedShelfItemId,
     }),
-    [cardProgress, getEntryActions, installedSources.data, strings],
+    [cardProgress, getEntryActions, installedSources.data, selectedShelfItemId, strings],
   );
 
   // Collection management sheets. Rendered by the empty-library state too, so
@@ -2679,7 +2723,7 @@ export function LibraryScreen({
       // An empty Library or collection is this same list with the hero as its
       // empty component: exactly as tall as the viewport, so it only rubber-bands.
       fillViewport={showEmptyOnboarding || showEmptyCollectionHero}
-      data={showSkeleton ? [] : libraryRows}
+      data={showSkeleton || showCarousel ? [] : libraryRows}
       keyExtractor={collectionRowKey}
       renderItem={renderLibraryRow}
       // Every row glides to its new y when the sections above it change
@@ -2716,6 +2760,7 @@ export function LibraryScreen({
           {usesNativeHeader ? null : (
             <PageHeader
               title={title}
+              titleAccessory={pageTitleAdornment}
               loading={pageLoading}
               leadingIcon={isCollectionRoute ? "chevron-back-outline" : undefined}
               onLeadingPress={isCollectionRoute ? () => router.back() : undefined}
@@ -2752,6 +2797,30 @@ export function LibraryScreen({
             />
           )}
 
+          {designExplore && !showSkeleton && gridEntries.length > 0 ? (
+            <MobileLibraryCarousel
+              entries={gridEntries}
+              selectedId={selectedShelfEntry?.item.libraryItemId ?? null}
+              onSelect={handleShelfSelect}
+              renderCard={shelfCardRenderer}
+              renderHeroCover={(entry) => (
+                <LibraryGridItem
+                  entry={entry}
+                  cardProgress={cardProgress.get(entry.item.libraryItemId)}
+                  strings={strings}
+                  installedSources={installedSources.data}
+                  getActions={getEntryActions}
+                  onLongPress={handleGridItemLongPress}
+                  placeholderWidth={gridItemWidth}
+                  coverOnly
+                  cardStyle={styles.heroCard}
+                />
+              )}
+              progress={cardProgress}
+              strings={strings}
+              reduceMotion={reduceMotion === true}
+            />
+          ) : null}
           <View style={styles.stack}>
             {showSkeleton ? (
               <Animated.View exiting={mobileStateExiting}>
@@ -2889,6 +2958,25 @@ const styles = StyleSheet.create({
   },
   emptyHero: {
     flex: 1,
+  },
+  heroCard: {
+    width: "100%",
+  },
+  scopeChip: {
+    minHeight: 32,
+    maxWidth: 150,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+  },
+  scopeChipText: {
+    flexShrink: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: nemuFontWeight.semibold,
   },
   titleMenuSheet: {
     gap: 8,

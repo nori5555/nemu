@@ -461,6 +461,7 @@ export function getMobileLibraryProgressInfo(
  */
 export type MobileLibraryCardProgress = {
   subtitle: string;
+  author?: string;
   badge?: string;
   quickActionSource?: LocalSourceLink;
 };
@@ -483,6 +484,7 @@ export function buildMobileLibraryCardProgress(
     const info = getMobileLibraryProgressInfo(entry, progressIndex, strings, progress, completedChapters);
     cards.set(entry.item.libraryItemId, {
       subtitle: info.subtitle,
+      author: (entry.item.overrides?.metadata?.authors ?? entry.item.metadata.authors ?? []).find((value) => value.trim())?.trim(),
       badge: info.badge,
       quickActionSource: getMobileEntryMostRecentSource(entry, progress),
     });
@@ -508,6 +510,7 @@ export function stabilizeMobileLibraryCardProgress(
     const same =
       previous !== undefined &&
       previous.subtitle === card.subtitle &&
+      previous.author === card.author &&
       previous.badge === card.badge &&
       previous.quickActionSource === card.quickActionSource;
     if (!same) reusedAll = false;
