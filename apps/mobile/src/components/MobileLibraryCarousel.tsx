@@ -30,20 +30,10 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heroWidth = Math.min(windowWidth * 0.57, 300);
   const railWidth = Math.min(windowWidth * 0.39, 172);
-  const initialLayoutDoneRef = useRef(false);
   const railCellSize = railWidth + 20;
   const railSidePadding = Math.max(0, (windowWidth - railCellSize) / 2);
   const selected = entries.find((entry) => entry.item.libraryItemId === selectedId) ?? entries[0] ?? null;
   const selectedKey = selected?.item.libraryItemId ?? null;
-
-  useEffect(() => {
-    if (!selectedKey || initialLayoutDoneRef.current) return;
-    requestAnimationFrame(() => {
-      const position = entries.findIndex((entry) => entry.item.libraryItemId === selectedKey);
-      if (position > 0) scroll.current?.scrollTo({ x: position * railCellSize, animated: false });
-      initialLayoutDoneRef.current = true;
-    });
-  }, [entries, railCellSize, selectedKey]);
 
   const centerCard = useCallback((id: string) => {
     requestAnimationFrame(() => refs.current.get(id)?.measureLayout(
@@ -52,7 +42,7 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
         isCenteringRef.current = true;
         scroll.current?.scrollTo({ x: Math.max(0, x + width / 2 - windowWidth / 2), animated: true });
         if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
-        scrollTimerRef.current = setTimeout(() => { isCenteringRef.current = false; }, 420);
+        scrollTimerRef.current = setTimeout(() => { isCenteringRef.current = false; }, 720);
       },
       () => undefined,
     ));
@@ -66,25 +56,26 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
     if (isCenteringRef.current) return;
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
-      const centerX = windowWidth / 2;
-      let best: LibraryEntry | null = null;
-      let distance = Number.POSITIVE_INFINITY;
-      for (const entry of entries) {
-        const node = refs.current.get(entry.item.libraryItemId);
-        if (!node) continue;
-        node.measureInWindow((x, _y, width) => {
-          const currentDistance = Math.abs(x + width / 2 - centerX);
-          if (currentDistance < distance) {
-            distance = currentDistance;
-            best = entry;
-          }
+      const viewport = scroll.current;
+      if (!viewport) return;
+      viewport.measureInWindow((viewportX, _viewportY, viewportWidth) => {
+        const centerX = viewportX + viewportWidth / 2;
+        const measurements = entries.flatMap((entry) => {
+          const node = refs.current.get(entry.item.libraryItemId);
+          return node ? [{ entry, node }] : [];
         });
-      }
-      requestAnimationFrame(() => {
-        if (best && (best as LibraryEntry).item.libraryItemId !== selectedKey) onSelect(best as LibraryEntry);
+        void Promise.all(measurements.map(({ entry, node }) => new Promise<{ entry: LibraryEntry; distance: number }>((resolve) => {
+          node.measureInWindow((x, _y, width) => resolve({ entry, distance: Math.abs(x + width / 2 - centerX) }));
+        }))).then((results) => {
+          const closest = results.reduce<{ entry: LibraryEntry; distance: number } | null>(
+            (best, result) => !best || result.distance < best.distance ? result : best,
+            null,
+          );
+          if (closest && closest.entry.item.libraryItemId !== selectedKey) onSelect(closest.entry);
+        });
       });
     }, 90);
-  }, [entries, onSelect, selectedKey, windowWidth]);
+  }, [entries, onSelect, selectedKey]);
   useEffect(() => () => { if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current); }, []);
 
   if (!selected) return null;
