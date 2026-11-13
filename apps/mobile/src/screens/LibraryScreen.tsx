@@ -2945,6 +2945,7 @@ export function LibraryScreen({
               strings={strings}
               installedSources={installedSources.data}
               onEntryLongPress={(entry) => setQuickActionEntry(entry)}
+              leavingIds={gridGlide?.leaving ?? null}
             />
           ) : usesNativeHeader ? null : (
             <PageHeader
