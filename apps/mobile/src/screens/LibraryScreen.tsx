@@ -2902,6 +2902,11 @@ export function LibraryScreen({
       // An empty Library or collection is this same list with the hero as its
       // empty component: exactly as tall as the viewport, so it only rubber-bands.
       fillViewport={showEmptyOnboarding || showEmptyCollectionHero}
+      // The Pagekin home is pure white in light mode, like the Pagekin
+      // reference; the grid library and dark mode stay on the token.
+      backgroundColor={
+        pagekinHome && scheme === "light" ? "#FFFFFF" : undefined
+      }
       data={pagekinHome ? [] : showSkeleton ? [] : libraryRows}
       keyExtractor={collectionRowKey}
       renderItem={renderLibraryRow}
