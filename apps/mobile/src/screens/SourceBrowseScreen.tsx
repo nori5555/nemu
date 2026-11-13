@@ -35,6 +35,7 @@ import {
   router,
   useFocusEffect,
   useLocalSearchParams,
+  useNavigation,
 } from "expo-router";
 import { nextSyncTimestamp } from "@nemu/core";
 import { EmptyLibrary } from "@/components/EmptyLibrary";
@@ -1401,6 +1402,28 @@ export function SourceBrowseScreen() {
   const compactHeader = useCompactSourceBrowseHeader();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage);
+  // A tap right after popping a detail can be swallowed: the press reaches
+  // the card but the push never lands (the stack is still settling, or the
+  // touch is cancelled while the list re-lays-out). A push is cheap to
+  // retry — but only when this screen never blurred, so a real open that
+  // the user immediately exited does not re-open itself.
+  const navigation = useNavigation();
+  const mangaPushBlurredRef = useRef(false);
+  const mangaPushRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("blur", () => {
+      mangaPushBlurredRef.current = true;
+    });
+    return unsubscribe;
+  }, [navigation]);
+  useEffect(
+    () => () => {
+      if (mangaPushRetryRef.current !== null) {
+        clearTimeout(mangaPushRetryRef.current);
+      }
+    },
+    [],
+  );
   const sourceBrowseStringsRef = useRef(strings.sourceBrowse);
   const [selectedListingId, setSelectedListingId] = useState<string | null>(
     null,
@@ -2754,7 +2777,17 @@ export function SourceBrowseScreen() {
         mangaTitle: manga.title,
         zoom: zoomTransitionAvailable ? zoomIdFor(sourceDisplay, manga) : null,
       });
-      router.push(intent?.add ? withMobileExploreAddIntent(href) : href);
+      const push = () =>
+        router.push(intent?.add ? withMobileExploreAddIntent(href) : href);
+      mangaPushBlurredRef.current = false;
+      if (mangaPushRetryRef.current !== null) {
+        clearTimeout(mangaPushRetryRef.current);
+      }
+      push();
+      mangaPushRetryRef.current = setTimeout(() => {
+        mangaPushRetryRef.current = null;
+        if (!mangaPushBlurredRef.current) push();
+      }, 400);
     },
     [zoomIdFor],
   );
