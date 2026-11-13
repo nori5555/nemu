@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { StyleSheet } from "react-native";
+import { hapticPress } from "@/lib/haptics";
 import { mobileDesignExploreFlag } from "@/lib/mobileDesignExplore";
 import {
   ZoomTarget,
@@ -72,7 +73,17 @@ export function MobileExploreZoomRoute({
   const [landsAt, setLandsAt] = useState<number | null>(null);
   const onStartedRef = useRef(onStarted);
   onStartedRef.current = onStarted;
+  // The open animation's own vibration: the tap already fires a Light impact
+  // through NemuPressable, but the zoom itself never had one — so when the
+  // zoom didn't play, the whole open felt dead. Fire once, here, at the
+  // moment the native transition actually starts, so vibration present means
+  // the zoom is playing (and it works on every surface that opens by zoom).
+  const startedHapticRef = useRef(false);
   const onZoomStarted = useCallback((event: ZoomStartedEvent) => {
+    if (!startedHapticRef.current) {
+      startedHapticRef.current = true;
+      void hapticPress();
+    }
     const at = event.startedAtMs + event.durationMs;
     if (Number.isFinite(at)) setLandsAt((previous) => previous ?? at);
     onStartedRef.current?.(event);
