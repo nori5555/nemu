@@ -462,6 +462,7 @@ export function getMobileLibraryProgressInfo(
 export type MobileLibraryCardProgress = {
   subtitle: string;
   author?: string;
+  percent?: number;
   badge?: string;
   quickActionSource?: LocalSourceLink;
 };
@@ -485,6 +486,14 @@ export function buildMobileLibraryCardProgress(
     cards.set(entry.item.libraryItemId, {
       subtitle: info.subtitle,
       author: (entry.item.overrides?.metadata?.authors ?? entry.item.metadata.authors ?? []).find((value) => value.trim())?.trim(),
+      percent: (() => {
+        const source = getMobileEntryMostRecentSource(entry, progress);
+        const number = source ? progress.get(source.id)?.lastReadChapterNumber : undefined;
+        const latest = source?.latestChapter?.chapterNumber;
+        return typeof number === "number" && typeof latest === "number" && latest > 0
+          ? Math.max(0, Math.min(100, Math.round((number / latest) * 100)))
+          : undefined;
+      })(),
       badge: info.badge,
       quickActionSource: getMobileEntryMostRecentSource(entry, progress),
     });
@@ -511,6 +520,7 @@ export function stabilizeMobileLibraryCardProgress(
       previous !== undefined &&
       previous.subtitle === card.subtitle &&
       previous.author === card.author &&
+      previous.percent === card.percent &&
       previous.badge === card.badge &&
       previous.quickActionSource === card.quickActionSource;
     if (!same) reusedAll = false;
