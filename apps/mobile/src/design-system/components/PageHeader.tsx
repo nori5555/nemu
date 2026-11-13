@@ -1,4 +1,4 @@
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View, type ReactNode } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMobileLanguageSettings } from "@/data/mobileHooks";
 import { createNemuShadowStyle } from "@/design/shadows";
@@ -36,6 +36,7 @@ type PageHeaderProps = {
   actionDisabled?: boolean;
   actionLoading?: boolean;
   actions?: PageHeaderAction[];
+  titleAccessory?: ReactNode;
 };
 
 export function PageHeader({
@@ -52,6 +53,7 @@ export function PageHeader({
   actionDisabled,
   actionLoading,
   actions,
+  titleAccessory,
 }: PageHeaderProps) {
   const { tokens } = useNemuTheme();
   const { appLanguage } = useMobileLanguageSettings();
@@ -113,6 +115,7 @@ export function PageHeader({
           {title}
         </Text>
         {loading ? <ActivityIndicator color={tokens.primary} /> : null}
+        {titleAccessory}
       </View>
       {resolvedActions.length ? (
         <View style={styles.actions}>

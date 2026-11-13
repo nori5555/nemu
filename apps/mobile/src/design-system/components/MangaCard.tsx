@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from "react";
-import { StyleSheet, Text, View, useWindowDimensions, type TextLayoutEvent } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions, type StyleProp, type TextLayoutEvent, type ViewStyle } from "react-native";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
@@ -37,6 +37,8 @@ export const MangaCard = memo(function MangaCard({
   onPress,
   wrapCover,
   placeholder,
+  cardStyle,
+  coverOnly = false,
 }: {
   item: MangaCardModel;
   /** Drawn when there is no cover or it fails (design-explore: a cloth book). */
@@ -50,6 +52,10 @@ export const MangaCard = memo(function MangaCard({
    * leave a loaded cover invisible.
    */
   wrapCover?: (cover: ReactNode) => ReactNode;
+  /** Optional width/height styling for a hero cover. */
+  cardStyle?: StyleProp<ViewStyle>;
+  /** Renders only the cover while retaining this card's zoom source. */
+  coverOnly?: boolean;
 }) {
   const { tokens } = useNemuTheme();
   const { appLanguage } = useMobileLanguageSettings();
@@ -164,10 +170,10 @@ export const MangaCard = memo(function MangaCard({
             }
           : undefined
       }
-      style={styles.root}
+      style={[styles.root, cardStyle]}
     >
       {wrapCover ? wrapCover(coverView) : coverView}
-      <View style={styles.textBlock}>
+      {!coverOnly ? <View style={styles.textBlock}>
         <MangaCardTitle title={item.title} color={tokens.foreground} />
         {item.subtitle ? (
           <Text
@@ -178,7 +184,7 @@ export const MangaCard = memo(function MangaCard({
             {item.subtitle}
           </Text>
         ) : null}
-      </View>
+      </View> : null}
     </NemuPressable>
   );
 });
