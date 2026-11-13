@@ -350,7 +350,7 @@ const LibraryGridItem = memo(function LibraryGridItem({
   }, [entry, item.cover, item.coverHeaders, zoomId]);
   const wrapCover = useCallback(
     (cover: ReactNode) => (
-      <ZoomSource zoomId={`${zoomId}${enableZoom ? "" : ":rail"}`} style={styles.gridZoomSource}>
+      <ZoomSource zoomId={zoomId} style={styles.gridZoomSource}>
         {cover}
       </ZoomSource>
     ),
@@ -364,8 +364,8 @@ const LibraryGridItem = memo(function LibraryGridItem({
       coverOnly={coverOnly}
       cardStyle={cardStyle}
       onLongPress={!mobileNativeQuickMenuAvailable && onLongPress ? handleLongPress : undefined}
-      onPress={onSelect ? () => onSelect() : designExplore ? exploreOpen : undefined}
-      wrapCover={designExplore && enableZoom ? wrapCover : undefined}
+      onPress={designExplore && enableZoom ? exploreOpen : onSelect ? () => onSelect() : undefined}
+      wrapCover={designExplore ? wrapCover : undefined}
       placeholder={
         designExplore && placeholderWidth ? (
           <MobileExploreCoverPlaceholder title={getEntryTitle(entry)} width={placeholderWidth} />
@@ -2389,6 +2389,10 @@ export function LibraryScreen({
   const handleShelfSelect = useCallback((entry: LibraryEntry) => {
     setSelectedShelfItemId(entry.item.libraryItemId);
   }, []);
+  const openShelfEntry = useCallback((entry: LibraryEntry) => {
+    const cover = resolveMobileEntryDisplayCover(entry);
+    pushMobileExploreDetail(entry, cover ? { uri: cover } : null, `grid:${entry.item.libraryItemId}`);
+  }, []);
   const shelfCardRenderer = useCallback((entry: LibraryEntry, width: number) => (
     <View style={{ width }}>
       <ExploreDissolveTarget id={entry.item.libraryItemId}>
@@ -2814,8 +2818,10 @@ export function LibraryScreen({
                   placeholderWidth={gridItemWidth}
                   coverOnly
                   cardStyle={styles.heroCard}
+                  enableZoom
                 />
               )}
+              onOpen={openShelfEntry}
               progress={cardProgress}
               strings={strings}
               reduceMotion={reduceMotion === true}
