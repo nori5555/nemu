@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import {
   Image,
   Pressable,
@@ -9,8 +9,10 @@ import {
 import Animated, {
   interpolate,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
-  withTiming,
+  withDelay,
+  withSpring,
   type SharedValue,
 } from "react-native-reanimated";
 import { ZoomSource } from "../../modules/nemu-window-layout";
@@ -51,13 +53,18 @@ import { ExploreDissolveTarget } from "@/components/explore/ExploreDissolveTarge
 type PagekinCoverSource = ReturnType<typeof useMobileExploreEntryCover>;
 
 // The Pagekin home: one big currently-reading cover (author, title, progress)
-// over a row of the rest of the library. The row rests gathered — leaning,
-// overlapping, staggered like books on a shelf — and spreads out while it
-// scrolls: upright, a gap between neighbours, then gathers again once the
-// scroll settles. (An earlier fan — tilted, overlapping cards — read as one
-// grey block, because the tilted shadows merged and the scroller clipped
-// them; the fan is gone. A later always-leaning row read as stuck together,
-// because it never opened up while scrolling.)
+// over a row of the rest of the library. The row rests gathered — overlapping,
+// staggered like books on a shelf — and spreads out while it scrolls: a gap
+// between neighbours, tops aligned, then gathers again once the scroll
+// settles. (An earlier fan — tilted, overlapping cards — read as one grey
+// block, because the tilted shadows merged and the scroller clipped them;
+// the fan is gone. A later always-leaning row read as stuck together,
+// because it never opened up while scrolling. Frame-by-frame measurement
+// of the reference (2026-11-13) showed its cards do not rotate at all —
+// the left edge of a resting card is vertical to the pixel over 300 px —
+// the shelf look is stagger plus overlap alone, so this row does not tilt
+// either; the earlier ±5° tilt, driven by one shared withTiming value, is
+// what read as stiff.)
 
 const FEATURED_COVER_WIDTH_RATIO = 0.54;
 const FEATURED_COVER_MAX_WIDTH = 240;
@@ -75,15 +82,30 @@ const FEATURED_SPINE_PAPER = "#F5F1E6";
 const ROW_VISIBLE_CARDS = 3;
 const ROW_CARD_GAP = 16;
 const ROW_CONTENT_PADDING = 20;
-// The row's two states. At rest it leans like books on a shelf (Pagekin):
-// each card tilts a few degrees around its bottom edge, overlaps its
-// neighbour slightly, and sits a few points higher or lower than the next.
-// While it scrolls it opens up: upright, ROW_CARD_GAP between neighbours.
+// The row's two states. At rest the cards sit like books on a shelf
+// (Pagekin): overlapping slightly, tops staggered a few points. While it
+// scrolls it opens up: ROW_CARD_GAP between neighbours, tops aligned.
 // ROW_CARD_GAP only sizes the cards (see rowCardWidth); at rest the laid-out
 // cards overlap by ROW_OVERLAP instead of leaving a gap.
+// Measured from the reference (2026-11-13, full-res frames): resting tops
+// differ by up to ~13 pt while bottoms sit on one line, and no card
+// rotates — so the stagger carries the shelf look, not a tilt.
 const ROW_OVERLAP = 12;
-const ROW_TILTS = [-2, 5, -4, 2];
-const ROW_Y_OFFSETS = [0, 7, 3, 9];
+const ROW_Y_OFFSETS = [13, 0, 2, 9];
+// The row ScrollView mounts every card at once, so upscaling the whole
+// library on first open would spike the Neural Engine: only the visible
+// strip plus a buffer gets the 4x upscale (the first 8 cards); further
+// down the row stays raw. The cache is per URL, so each cover pays the
+// cost once.
+const ROW_SR_LIMIT = 8;
+// Each card starts its spring this many ms after the one before it, so
+// the row opens and gathers like a wave instead of all at once.
+const ROW_STAGGER_MS = 30;
+// Opening is quick with a breath of overshoot; gathering is slower and
+// settles soft. Both are springs, not fixed-duration timings: a flick's
+// momentum reversing the target mid-gather just retargets the springs.
+const ROW_SPREAD_SPRING = { stiffness: 400, damping: 30 };
+const ROW_GATHER_SPRING = { stiffness: 170, damping: 22 };
 // Room for the floating tab bar, as the server browser's clearance.
 const PAGEKIN_BOTTOM_CLEARANCE = 96;
 
@@ -115,7 +137,7 @@ const PagekinCover = memo(function PagekinCover({
   /** Long-press opens the entry's quick menu (edit info, collections…). */
   onLongPress?: (entry: LibraryEntry) => void;
   zoomId: string;
-  /** Upscale the cover 4x on-device (featured cover only; the row stays raw). */
+  /** Upscale the cover 4x on-device (featured cover always; row cards up to ROW_SR_LIMIT). */
   superResolve?: boolean;
   /** Paper grain over the cover (featured cover only; the row stays clean). */
   grain?: boolean;
@@ -260,7 +282,7 @@ const PagekinRowCard = memo(function PagekinRowCard({
   onEntryLongPress?: (entry: LibraryEntry) => void;
   /** True while this card is playing its delete exit (it stays in the held list one commit). */
   leaving?: boolean;
-  /** 0 at rest (leaning, overlapping) → 1 while the row scrolls (upright, gapped). */
+  /** 0 at rest (gathered, overlapping) → 1 while the row scrolls (gapped, level tops). */
   spread: SharedValue<number>;
 }) {
   // The outer view carries the delete animation (the grid cells' own
@@ -268,28 +290,36 @@ const PagekinRowCard = memo(function PagekinRowCard({
   // into the gap. The dissolve target sits inside it, so deleting this
   // card turns it to dust — the grid's shake-and-scraps — instead of
   // only fading it: the target hides the card, shadow included, while
-  // its dust flies. At rest the card leans like a book on a shelf: it
-  // tilts a few degrees around its bottom edge, overlaps its neighbour,
-  // and sits a few points higher or lower than the next, so each shadow
-  // still belongs to one book and nothing merges into a slab under the row.
-  // While the row scrolls it stands upright with a gap, then gathers again
-  // once the scroll settles.
-  const cardHeight = cardWidth * 1.5;
-  const tilt = ROW_TILTS[index % ROW_TILTS.length];
+  // its dust flies. At rest the card sits like a book on a shelf: it
+  // overlaps its neighbour and sits a few points higher or lower than
+  // the next, so each shadow still belongs to one book and nothing merges
+  // into a slab under the row. While the row scrolls it stands with a gap
+  // and level tops, then gathers again once the scroll settles. No
+  // rotation: the reference does not tilt its cards (measured vertical to
+  // the pixel), and the ±5° tilt is what made this row read as stiff.
   const yOffset = ROW_Y_OFFSETS[index % ROW_Y_OFFSETS.length];
+  // Each card follows the row's spread on its own spring, starting
+  // ROW_STAGGER_MS after the one before it. The spring config follows the
+  // target: quick with a breath of overshoot while opening, slower and
+  // soft while gathering.
+  const localSpread = useDerivedValue(() =>
+    withDelay(
+      index * ROW_STAGGER_MS,
+      withSpring(
+        spread.value,
+        spread.value === 1 ? ROW_SPREAD_SPRING : ROW_GATHER_SPRING,
+      ),
+    ),
+  );
   const animatedStyle = useAnimatedStyle(() => {
-    const value = spread.value;
+    const value = localSpread.value;
     return {
       width: cardWidth,
       marginLeft:
         index === 0
           ? 0
           : interpolate(value, [0, 1], [-ROW_OVERLAP, ROW_CARD_GAP]),
-      transform: [
-        { translateY: cardHeight / 2 },
-        { rotate: `${interpolate(value, [0, 1], [tilt, 0])}deg` },
-        { translateY: -cardHeight / 2 + yOffset * (1 - value) },
-      ],
+      transform: [{ translateY: yOffset * (1 - value) }],
     };
   });
   return (
@@ -315,6 +345,9 @@ const PagekinRowCard = memo(function PagekinRowCard({
             // Row cards share the featured cover's 18pt corners now
             // (the fan's 10pt was dropped with the fan).
             radius={18}
+            // The first cards get the same 4x upscale as the featured
+            // cover; further down the row stays raw (see ROW_SR_LIMIT).
+            superResolve={index < ROW_SR_LIMIT}
             zoomId={`pagekin-row:${entry.item.libraryItemId}`}
             onOpen={(opened, cover) =>
               openPagekinEntry(
@@ -361,31 +394,17 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
   // right up to the screen edge.
   const pageBleed = useMobilePageBleedStyles();
 
-  // The row's scroll state: 0 at rest, 1 while it scrolls. A drag spreads
-  // the cards; the gather waits 120 ms after the finger lifts so a flick's
-  // momentum — which starts right after the lift — does not gather the row
-  // for one frame and spread it again. Momentum's own end gathers it.
+  // The row's scroll state: 0 at rest, 1 while it scrolls. This value is
+  // only the target — each card follows it on its own spring (see
+  // PagekinRowCard), so there is no fixed delay and no fixed-duration
+  // timing: the gather starts the moment the scroll settles, and a flick
+  // whose momentum retargets the row mid-gather just bends the springs.
   const rowSpread = useSharedValue(0);
-  const gatherTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (gatherTimer.current !== null) clearTimeout(gatherTimer.current);
-    },
-    [],
-  );
   const spreadRow = () => {
-    if (gatherTimer.current !== null) {
-      clearTimeout(gatherTimer.current);
-      gatherTimer.current = null;
-    }
-    rowSpread.value = withTiming(1, { duration: 180 });
+    rowSpread.value = 1;
   };
-  const gatherRow = (delayMs: number) => {
-    if (gatherTimer.current !== null) clearTimeout(gatherTimer.current);
-    gatherTimer.current = setTimeout(() => {
-      gatherTimer.current = null;
-      rowSpread.value = withTiming(0, { duration: 280 });
-    }, delayMs);
+  const gatherRow = () => {
+    rowSpread.value = 0;
   };
 
   const featured = useMemo(
@@ -526,8 +545,8 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
           showsHorizontalScrollIndicator={false}
           onScrollBeginDrag={spreadRow}
           onMomentumScrollBegin={spreadRow}
-          onMomentumScrollEnd={() => gatherRow(0)}
-          onScrollEndDrag={() => gatherRow(120)}
+          onMomentumScrollEnd={gatherRow}
+          onScrollEndDrag={gatherRow}
           contentContainerStyle={{
             paddingHorizontal: ROW_CONTENT_PADDING,
             // The row shadow (offset 4, radius 10) fades ~25pt past the
