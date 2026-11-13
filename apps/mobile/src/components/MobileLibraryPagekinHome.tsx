@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   Pressable,
@@ -6,7 +6,13 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import Animated from "react-native-reanimated";
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from "react-native-reanimated";
 import { ZoomSource } from "../../modules/nemu-window-layout";
 import {
   createNemuShadowStyle,
@@ -44,12 +50,13 @@ import { ExploreDissolveTarget } from "@/components/explore/ExploreDissolveTarge
 type PagekinCoverSource = ReturnType<typeof useMobileExploreEntryCover>;
 
 // The Pagekin home: one big currently-reading cover (author, title, progress)
-// over a row of the rest of the library. The row is a horizontal scroller of
-// upright covers with a gap between neighbours, the way the Pagekin reference
-// rests: each book stands on its own, so no shadow ever merges into a slab
-// under the row. (An earlier fan — tilted, overlapping cards — read as one
+// over a row of the rest of the library. The row rests gathered — leaning,
+// overlapping, staggered like books on a shelf — and spreads out while it
+// scrolls: upright, a gap between neighbours, then gathers again once the
+// scroll settles. (An earlier fan — tilted, overlapping cards — read as one
 // grey block, because the tilted shadows merged and the scroller clipped
-// them; the fan is gone.)
+// them; the fan is gone. A later always-leaning row read as stuck together,
+// because it never opened up while scrolling.)
 
 const FEATURED_COVER_WIDTH_RATIO = 0.54;
 const FEATURED_COVER_MAX_WIDTH = 240;
@@ -67,11 +74,12 @@ const FEATURED_SPINE_PAPER = "#F5F1E6";
 const ROW_VISIBLE_CARDS = 3;
 const ROW_CARD_GAP = 16;
 const ROW_CONTENT_PADDING = 20;
-// At rest the row leans like books on a shelf (Pagekin): each card tilts
-// a few degrees around its bottom edge, overlaps its neighbour slightly,
-// and sits a few points higher or lower than the next — never upright in
-// a straight line. ROW_CARD_GAP only sizes the cards (see rowCardWidth);
-// the laid-out cards overlap by ROW_OVERLAP instead of leaving a gap.
+// The row's two states. At rest it leans like books on a shelf (Pagekin):
+// each card tilts a few degrees around its bottom edge, overlaps its
+// neighbour slightly, and sits a few points higher or lower than the next.
+// While it scrolls it opens up: upright, ROW_CARD_GAP between neighbours.
+// ROW_CARD_GAP only sizes the cards (see rowCardWidth); at rest the laid-out
+// cards overlap by ROW_OVERLAP instead of leaving a gap.
 const ROW_OVERLAP = 12;
 const ROW_TILTS = [-2, 5, -4, 2];
 const ROW_Y_OFFSETS = [0, 7, 3, 9];
@@ -242,6 +250,7 @@ const PagekinRowCard = memo(function PagekinRowCard({
   installedSources,
   onEntryLongPress,
   leaving,
+  spread,
 }: {
   entry: LibraryEntry;
   index: number;
@@ -250,6 +259,8 @@ const PagekinRowCard = memo(function PagekinRowCard({
   onEntryLongPress?: (entry: LibraryEntry) => void;
   /** True while this card is playing its delete exit (it stays in the held list one commit). */
   leaving?: boolean;
+  /** 0 at rest (leaning, overlapping) → 1 while the row scrolls (upright, gapped). */
+  spread: SharedValue<number>;
 }) {
   // The outer view carries the delete animation (the grid cells' own
   // glide): a leaving card fades where it stands while the rest glide
@@ -260,22 +271,31 @@ const PagekinRowCard = memo(function PagekinRowCard({
   // tilts a few degrees around its bottom edge, overlaps its neighbour,
   // and sits a few points higher or lower than the next, so each shadow
   // still belongs to one book and nothing merges into a slab under the row.
+  // While the row scrolls it stands upright with a gap, then gathers again
+  // once the scroll settles.
   const cardHeight = cardWidth * 1.5;
   const tilt = ROW_TILTS[index % ROW_TILTS.length];
   const yOffset = ROW_Y_OFFSETS[index % ROW_Y_OFFSETS.length];
+  const animatedStyle = useAnimatedStyle(() => {
+    const value = spread.value;
+    return {
+      width: cardWidth,
+      marginLeft:
+        index === 0
+          ? 0
+          : interpolate(value, [0, 1], [-ROW_OVERLAP, ROW_CARD_GAP]),
+      transform: [
+        { translateY: cardHeight / 2 },
+        { rotate: `${interpolate(value, [0, 1], [tilt, 0])}deg` },
+        { translateY: -cardHeight / 2 + yOffset * (1 - value) },
+      ],
+    };
+  });
   return (
     <Animated.View
       layout={mobileGridGlideTransition}
       exiting={leaving ? mobileGridGlideVanishing : undefined}
-      style={{
-        width: cardWidth,
-        marginLeft: index === 0 ? 0 : -ROW_OVERLAP,
-        transform: [
-          { translateY: cardHeight / 2 },
-          { rotate: `${tilt}deg` },
-          { translateY: -cardHeight / 2 + yOffset },
-        ],
-      }}
+      style={animatedStyle}
     >
       <ExploreDissolveTarget id={entry.item.libraryItemId}>
         <View
@@ -333,6 +353,33 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
   const { tokens, scheme } = useNemuTheme();
   const { width: viewportWidth } = useWindowDimensions();
 
+  // The row's scroll state: 0 at rest, 1 while it scrolls. A drag spreads
+  // the cards; the gather waits 120 ms after the finger lifts so a flick's
+  // momentum — which starts right after the lift — does not gather the row
+  // for one frame and spread it again. Momentum's own end gathers it.
+  const rowSpread = useSharedValue(0);
+  const gatherTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (gatherTimer.current !== null) clearTimeout(gatherTimer.current);
+    },
+    [],
+  );
+  const spreadRow = () => {
+    if (gatherTimer.current !== null) {
+      clearTimeout(gatherTimer.current);
+      gatherTimer.current = null;
+    }
+    rowSpread.value = withTiming(1, { duration: 180 });
+  };
+  const gatherRow = (delayMs: number) => {
+    if (gatherTimer.current !== null) clearTimeout(gatherTimer.current);
+    gatherTimer.current = setTimeout(() => {
+      gatherTimer.current = null;
+      rowSpread.value = withTiming(0, { duration: 280 });
+    }, delayMs);
+  };
+
   const featured = useMemo(
     () => pickMobileLibraryFeaturedEntry(entries, progressIndex),
     [entries, progressIndex],
@@ -359,8 +406,9 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
     FEATURED_COVER_MAX_WIDTH,
   );
   // Three row cards fit the viewport (the next one peeking in at the edge
-  // invites the scroll). The cards overlap by ROW_OVERLAP once laid out,
-  // so ROW_CARD_GAP here only sizes the cards, it is not the pitch.
+  // invites the scroll). At rest the cards overlap by ROW_OVERLAP once laid
+  // out, so ROW_CARD_GAP here only sizes the cards, it is not the pitch;
+  // while the row scrolls the pitch is the card width plus ROW_CARD_GAP.
   const rowCardWidth =
     (viewportWidth -
       ROW_CONTENT_PADDING * 2 -
@@ -468,6 +516,10 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
           horizontal
           scrollsToTop={false}
           showsHorizontalScrollIndicator={false}
+          onScrollBeginDrag={spreadRow}
+          onMomentumScrollBegin={spreadRow}
+          onMomentumScrollEnd={() => gatherRow(0)}
+          onScrollEndDrag={() => gatherRow(120)}
           contentContainerStyle={{
             paddingHorizontal: ROW_CONTENT_PADDING,
             // The row shadow (offset 4, radius 10) fades ~25pt past the
@@ -487,6 +539,7 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
               installedSources={installedSources}
               onEntryLongPress={onEntryLongPress}
               leaving={leavingIds?.has(entry.item.libraryItemId) ?? false}
+              spread={rowSpread}
             />
           ))}
         </Animated.ScrollView>
