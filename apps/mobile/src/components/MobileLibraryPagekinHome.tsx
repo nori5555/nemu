@@ -67,6 +67,14 @@ const FEATURED_SPINE_PAPER = "#F5F1E6";
 const ROW_VISIBLE_CARDS = 3;
 const ROW_CARD_GAP = 16;
 const ROW_CONTENT_PADDING = 20;
+// At rest the row leans like books on a shelf (Pagekin): each card tilts
+// a few degrees around its bottom edge, overlaps its neighbour slightly,
+// and sits a few points higher or lower than the next — never upright in
+// a straight line. ROW_CARD_GAP only sizes the cards (see rowCardWidth);
+// the laid-out cards overlap by ROW_OVERLAP instead of leaving a gap.
+const ROW_OVERLAP = 12;
+const ROW_TILTS = [-2, 5, -4, 2];
+const ROW_Y_OFFSETS = [0, 7, 3, 9];
 // Room for the floating tab bar, as the server browser's clearance.
 const PAGEKIN_BOTTOM_CLEARANCE = 96;
 
@@ -243,16 +251,25 @@ const PagekinRowCard = memo(function PagekinRowCard({
   // into the gap. The dissolve target sits inside it, so deleting this
   // card turns it to dust — the grid's shake-and-scraps — instead of
   // only fading it: the target hides the card, shadow included, while
-  // its dust flies. The cards stand upright with a gap between
-  // neighbours, so each shadow belongs to one book and nothing merges
-  // into a slab under the row.
+  // its dust flies. At rest the card leans like a book on a shelf: it
+  // tilts a few degrees around its bottom edge, overlaps its neighbour,
+  // and sits a few points higher or lower than the next, so each shadow
+  // still belongs to one book and nothing merges into a slab under the row.
+  const cardHeight = cardWidth * 1.5;
+  const tilt = ROW_TILTS[index % ROW_TILTS.length];
+  const yOffset = ROW_Y_OFFSETS[index % ROW_Y_OFFSETS.length];
   return (
     <Animated.View
       layout={mobileGridGlideTransition}
       exiting={leaving ? mobileGridGlideVanishing : undefined}
       style={{
         width: cardWidth,
-        marginLeft: index === 0 ? 0 : ROW_CARD_GAP,
+        marginLeft: index === 0 ? 0 : -ROW_OVERLAP,
+        transform: [
+          { translateY: cardHeight / 2 },
+          { rotate: `${tilt}deg` },
+          { translateY: -cardHeight / 2 + yOffset },
+        ],
       }}
     >
       <ExploreDissolveTarget id={entry.item.libraryItemId}>
@@ -337,7 +354,8 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
     FEATURED_COVER_MAX_WIDTH,
   );
   // Three row cards fit the viewport (the next one peeking in at the edge
-  // invites the scroll); the gap between neighbours is ROW_CARD_GAP.
+  // invites the scroll). The cards overlap by ROW_OVERLAP once laid out,
+  // so ROW_CARD_GAP here only sizes the cards, it is not the pitch.
   const rowCardWidth =
     (viewportWidth -
       ROW_CONTENT_PADDING * 2 -
