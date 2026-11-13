@@ -28,17 +28,16 @@ export function MobileLibraryCarousel({ entries, selectedId, onSelect, renderCar
   const isCenteringRef = useRef(false);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heroWidth = Math.min(windowWidth * 0.57, 300);
-  const railWidth = Math.min(windowWidth * 0.39, 172);
-  const selected = entries.find((entry) => entry.item.libraryItemId === selectedId) ?? entries[0] ?? null;
+  const railCellSize = railWidth * 2 / 3 + 68;
+  const railSidePadding = Math.max(0, (windowWidth - railCellSize) / 2); = entries.find((entry) => entry.item.libraryItemId === selectedId) ?? entries[0] ?? null;
   const selectedKey = selected?.item.libraryItemId ?? null;
 
   const centerCard = useCallback((id: string) => {
     requestAnimationFrame(() => refs.current.get(id)?.measureLayout(
       scroll.current?.getInnerViewNode?.() as never,
       (x, _y, width) => {
-        const target = Math.max(0, x - (windowWidth - width) / 2);
         isCenteringRef.current = true;
-        scroll.current?.scrollTo({ x: target, animated: true });
+        scroll.current?.scrollTo({ x: Math.max(0, x + width / 2 - windowWidth / 2), animated: true });
         if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
         scrollTimerRef.current = setTimeout(() => { isCenteringRef.current = false; }, 420);
       },
@@ -88,22 +87,31 @@ export function MobileLibraryCarousel({ entries, selectedId, onSelect, renderCar
         <View style={styles.heroText}>
           <Text style={[styles.author, { color: tokens.mutedForeground }]} numberOfLines={1}>{info?.author ?? strings.library.progressUnread}</Text>
           <Text style={[styles.title, { color: tokens.foreground }]} numberOfLines={2}>{getEntryTitle(selected)}</Text>
-          {info?.badge ? <View style={[styles.progress, { backgroundColor: tokens.muted }]}><View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, Number.parseInt(info.badge, 10) || 27))}%`, backgroundColor: tokens.foreground }]} /></View> : null}
+          {info?.percent !== undefined ? <View style={styles.progressRow}><View style={[styles.progress, { backgroundColor: tokens.muted }]}><View style={[styles.progressFill, { width: `${info.percent}%`, backgroundColor: tokens.foreground }]} /></View><Text style={[styles.percent, { color: tokens.mutedForeground }]}>{info.percent}%</Text></View> : null}
         </View>
       </Animated.View>
-      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} onScroll={handleRailScroll} scrollEventThrottle={16} contentContainerStyle={[styles.rail, { paddingHorizontal: Math.max(0, (windowWidth - railWidth) / 2 - 13) }]}>
+      <ScrollView
+        key={selectedKey ?? "empty"}
+        ref={scroll}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        onScroll={handleRailScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={[styles.rail, { paddingHorizontal: railSidePadding }]}
+      >
         {entries.map((entry) => {
           const id = entry.item.libraryItemId;
           const isSelected = id === selectedKey;
-          return (
-            <MobilePoseLayoutView key={id} style={styles.railCell}>
-              <View ref={(node) => { if (node) refs.current.set(id, node); else refs.current.delete(id); }} collapsable={false}>
-                <NemuPressable accessibilityRole="button" accessibilityLabel={getEntryTitle(entry)} accessibilityState={{ selected: isSelected }} onPress={() => onSelect(entry)} style={[styles.railCard, { width: railWidth, opacity: isSelected ? 1 : 0.86, transform: [{ scale: isSelected ? 1 : 0.9 }] }]}>
-                  {renderCard(entry, railWidth)}
-                </NemuPressable>
-              </View>
-            </MobilePoseLayoutView>
+          const cell = (
+            <View ref={(node) => { if (node) refs.current.set(id, node); else refs.current.delete(id); }} collapsable={false}>
+              <NemuPressable accessibilityRole="button" accessibilityLabel={getEntryTitle(entry)} accessibilityState={{ selected: isSelected }} onPress={() => onSelect(entry)} style={[styles.railCard, { width: railWidth, opacity: isSelected ? 1 : 0.86, transform: [{ scale: isSelected ? 1 : 0.9 }] }]}>
+                {renderCard(entry, railWidth)}
+              </NemuPressable>
+            </View>
           );
+          return reduceMotion
+            ? <View key={id} style={styles.railCell}>{cell}</View>
+            : <MobilePoseLayoutView key={id} style={styles.railCell}>{cell}</MobilePoseLayoutView>;
         })}
       </ScrollView>
     </View>
@@ -117,9 +125,11 @@ const styles = StyleSheet.create({
   heroText: { width: "80%", marginTop: 12 },
   author: { fontSize: 15, lineHeight: 20 },
   title: { fontSize: 22, lineHeight: 28, fontWeight: "800", marginTop: 4 },
-  progress: { height: 7, borderRadius: 5, marginTop: 10, overflow: "hidden" },
+  progress: { height: 7, flex: 1, borderRadius: 5, overflow: "hidden" },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
+  percent: { fontSize: 12, lineHeight: 16 },
   progressFill: { height: "100%" },
   rail: { alignItems: "center", paddingVertical: 12 },
-  railCell: { marginHorizontal: 7, width: "auto" },
+  railCell: { marginHorizontal: 10, width: 1 },
   railCard: { overflow: "hidden" },
 });
