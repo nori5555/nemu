@@ -6,13 +6,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import Animated, {
-  Extrapolation,
-  interpolate,
-  useAnimatedScrollHandler,
-  useAnimatedStyle,
-  useSharedValue,
-} from "react-native-reanimated";
+import Animated from "react-native-reanimated";
 import { ZoomSource } from "../../modules/nemu-window-layout";
 import {
   createNemuShadowStyle,
@@ -50,27 +44,29 @@ import { ExploreDissolveTarget } from "@/components/explore/ExploreDissolveTarge
 type PagekinCoverSource = ReturnType<typeof useMobileExploreEntryCover>;
 
 // The Pagekin home: one big currently-reading cover (author, title, progress)
-// over a fanned deck of the rest of the library. The deck is a horizontal
-// scroller whose covers tilt away from the viewport centre, like a hand fan:
-// each card's rotation follows the scroll offset, so the fan re-centres as
-// the user scrolls instead of freezing at one angle per index.
+// over a row of the rest of the library. The row is a horizontal scroller of
+// upright covers with a gap between neighbours, the way the Pagekin reference
+// rests: each book stands on its own, so no shadow ever merges into a slab
+// under the row. (An earlier fan — tilted, overlapping cards — read as one
+// grey block, because the tilted shadows merged and the scroller clipped
+// them; the fan is gone.)
 
 const FEATURED_COVER_WIDTH_RATIO = 0.54;
 const FEATURED_COVER_MAX_WIDTH = 240;
 // Paper grain over the featured cover only: a tileable noise tile at low
 // opacity breaks up the smooth upscaling blur of a small source cover,
-// the way a printed cover's grain does. The fan covers stay clean.
+// the way a printed cover's grain does. The row covers stay clean.
 const FEATURED_GRAIN_OPACITY = 0.15;
 // The featured cover reads as a physical book: a page block peeks out on
 // its left edge (warm paper, two hairline page separations), the way the
-// Pagekin reference renders the currently-reading book. The fan stays flat.
+// Pagekin reference renders the currently-reading book. The row stays flat.
 const FEATURED_SPINE_WIDTH = 5;
 const FEATURED_SPINE_PAPER = "#F5F1E6";
-const FAN_CARD_WIDTH_RATIO = 0.3;
-const FAN_CARD_OVERLAP_RATIO = 0.34;
-const FAN_TILT_DEGREES = 9;
-const FAN_ARC_DROP = 7;
-const FAN_CONTENT_PADDING = 20;
+// Three row cards fit the viewport, with the next one peeking in at the
+// edge to invite the scroll.
+const ROW_VISIBLE_CARDS = 3;
+const ROW_CARD_GAP = 16;
+const ROW_CONTENT_PADDING = 20;
 // Room for the floating tab bar, as the server browser's clearance.
 const PAGEKIN_BOTTOM_CLEARANCE = 96;
 
@@ -102,9 +98,9 @@ const PagekinCover = memo(function PagekinCover({
   /** Long-press opens the entry's quick menu (edit info, collections…). */
   onLongPress?: (entry: LibraryEntry) => void;
   zoomId: string;
-  /** Upscale the cover 4x on-device (featured cover only; the fan stays raw). */
+  /** Upscale the cover 4x on-device (featured cover only; the row stays raw). */
   superResolve?: boolean;
-  /** Paper grain over the cover (featured cover only; the fan stays clean). */
+  /** Paper grain over the cover (featured cover only; the row stays clean). */
   grain?: boolean;
   /** Page block on the cover's left edge (featured cover only). */
   spine?: boolean;
@@ -226,13 +222,10 @@ const PagekinCover = memo(function PagekinCover({
   );
 });
 
-const PagekinFanCard = memo(function PagekinFanCard({
+const PagekinRowCard = memo(function PagekinRowCard({
   entry,
   index,
   cardWidth,
-  contentPad,
-  viewportWidth,
-  scrollX,
   installedSources,
   onEntryLongPress,
   leaving,
@@ -240,80 +233,56 @@ const PagekinFanCard = memo(function PagekinFanCard({
   entry: LibraryEntry;
   index: number;
   cardWidth: number;
-  contentPad: number;
-  viewportWidth: number;
-  scrollX: { value: number };
   installedSources: InstalledSource[];
   onEntryLongPress?: (entry: LibraryEntry) => void;
   /** True while this card is playing its delete exit (it stays in the held list one commit). */
   leaving?: boolean;
 }) {
-  // The card's centre in content coordinates: rotation is 0 when it sits at
-  // the viewport centre and tilts outward toward either edge.
-  const center =
-    contentPad +
-    index * (cardWidth * (1 - FAN_CARD_OVERLAP_RATIO)) +
-    cardWidth / 2;
-  const tilt = useAnimatedStyle(() => {
-    const rotate = interpolate(
-      scrollX.value,
-      [center - viewportWidth, center - viewportWidth / 2, center],
-      [FAN_TILT_DEGREES, 0, -FAN_TILT_DEGREES],
-      Extrapolation.CLAMP,
-    );
-    const translateY = interpolate(
-      scrollX.value,
-      [center - viewportWidth, center - viewportWidth / 2, center],
-      [FAN_ARC_DROP, 0, FAN_ARC_DROP],
-      Extrapolation.CLAMP,
-    );
-    return { transform: [{ rotate: `${rotate}deg` }, { translateY }] };
-  });
   // The outer view carries the delete animation (the grid cells' own
   // glide): a leaving card fades where it stands while the rest glide
-  // into the gap. The tilt lives on the inner view so the glide's
-  // transform never fights the scroll-linked rotation. The dissolve
-  // target sits between them, so deleting this card turns it to dust —
-  // the grid's shake-and-scraps — instead of only fading it: the
-  // target hides the card, shadow included, while its dust flies.
+  // into the gap. The dissolve target sits inside it, so deleting this
+  // card turns it to dust — the grid's shake-and-scraps — instead of
+  // only fading it: the target hides the card, shadow included, while
+  // its dust flies. The cards stand upright with a gap between
+  // neighbours, so each shadow belongs to one book and nothing merges
+  // into a slab under the row.
   return (
     <Animated.View
       layout={mobileGridGlideTransition}
       exiting={leaving ? mobileGridGlideVanishing : undefined}
       style={{
         width: cardWidth,
-        marginLeft: index === 0 ? 0 : -cardWidth * FAN_CARD_OVERLAP_RATIO,
+        marginLeft: index === 0 ? 0 : ROW_CARD_GAP,
       }}
     >
       <ExploreDissolveTarget id={entry.item.libraryItemId}>
-        <Animated.View
-          style={[
-            tilt,
-            createNemuShadowStyle({
-              color: "#000000",
-              offsetY: 6,
-              radius: 14,
-              opacity: 0.18,
-              elevation: 4,
-            }),
-          ]}
+        <View
+          style={createNemuShadowStyle({
+            color: "#000000",
+            offsetY: 4,
+            radius: 10,
+            opacity: 0.15,
+            elevation: 4,
+          })}
         >
           <PagekinCover
             entry={entry}
             installedSources={installedSources}
             width={cardWidth}
-            radius={10}
-            zoomId={`pagekin-fan:${entry.item.libraryItemId}`}
+            // Row cards share the featured cover's 18pt corners now
+            // (the fan's 10pt was dropped with the fan).
+            radius={18}
+            zoomId={`pagekin-row:${entry.item.libraryItemId}`}
             onOpen={(opened, cover) =>
               openPagekinEntry(
                 opened,
                 cover,
-                `pagekin-fan:${opened.item.libraryItemId}`,
+                `pagekin-row:${opened.item.libraryItemId}`,
               )
             }
             onLongPress={onEntryLongPress}
           />
-        </Animated.View>
+        </View>
       </ExploreDissolveTarget>
     </Animated.View>
   );
@@ -341,12 +310,6 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
 }) {
   const { tokens, scheme } = useNemuTheme();
   const { width: viewportWidth } = useWindowDimensions();
-  const scrollX = useSharedValue(0);
-  const handleFanScroll = useAnimatedScrollHandler({
-    onScroll: (event) => {
-      scrollX.value = event.contentOffset.x;
-    },
-  });
 
   const featured = useMemo(
     () => pickMobileLibraryFeaturedEntry(entries, progressIndex),
@@ -373,7 +336,13 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
     viewportWidth * FEATURED_COVER_WIDTH_RATIO,
     FEATURED_COVER_MAX_WIDTH,
   );
-  const fanCardWidth = viewportWidth * FAN_CARD_WIDTH_RATIO;
+  // Three row cards fit the viewport (the next one peeking in at the edge
+  // invites the scroll); the gap between neighbours is ROW_CARD_GAP.
+  const rowCardWidth =
+    (viewportWidth -
+      ROW_CONTENT_PADDING * 2 -
+      ROW_CARD_GAP * (ROW_VISIBLE_CARDS - 1)) /
+    ROW_VISIBLE_CARDS;
 
   if (!featured) return null;
   return (
@@ -476,23 +445,22 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
           horizontal
           scrollsToTop={false}
           showsHorizontalScrollIndicator={false}
-          onScroll={handleFanScroll}
-          scrollEventThrottle={16}
           contentContainerStyle={{
-            paddingHorizontal: FAN_CONTENT_PADDING,
-            paddingVertical: 12,
+            paddingHorizontal: ROW_CONTENT_PADDING,
+            // The row shadow (offset 4, radius 10) fades ~25pt past the
+            // cover; 32pt of bottom room lets it fade out before the
+            // scroller's edge, so no hard line ever appears under the row.
+            paddingTop: 12,
+            paddingBottom: 32,
           }}
-          style={styles.fan}
+          style={styles.row}
         >
           {rest.map((entry, index) => (
-            <PagekinFanCard
+            <PagekinRowCard
               key={entry.item.libraryItemId}
               entry={entry}
               index={index}
-              cardWidth={fanCardWidth}
-              contentPad={FAN_CONTENT_PADDING}
-              viewportWidth={viewportWidth}
-              scrollX={scrollX}
+              cardWidth={rowCardWidth}
               installedSources={installedSources}
               onEntryLongPress={onEntryLongPress}
               leaving={leavingIds?.has(entry.item.libraryItemId) ?? false}
@@ -552,7 +520,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     textAlign: "center",
   },
-  fan: {
+  row: {
     marginTop: 20,
   },
 });
