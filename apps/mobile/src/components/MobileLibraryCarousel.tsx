@@ -84,10 +84,8 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
     <View style={styles.root}>
       <Animated.View key={selectedKey} entering={reduceMotion ? undefined : ZoomIn.duration(260)} exiting={reduceMotion ? undefined : ZoomOut.duration(150)} style={styles.hero}>
         <View style={{ width: heroWidth }}>
-          <NemuPressable accessibilityRole="button" accessibilityLabel={getEntryTitle(selected)} onPress={() => onOpen(selected)}>
-            <View style={[styles.heroCover, { borderColor: tokens.coverBorder, backgroundColor: tokens.muted, ...createNemuShadowStyle({ color: tokens.shadow, offsetY: 8, radius: 20, elevation: 7 }) }]}>
-              {renderHeroCover(selected)}
-            </View>
+          <NemuPressable accessibilityRole="button" accessibilityLabel={getEntryTitle(selected)} onPress={() => onOpen(selected)} style={[styles.heroCover, { borderColor: tokens.coverBorder, backgroundColor: tokens.muted, ...createNemuShadowStyle({ color: tokens.shadow, offsetY: 8, radius: 20, elevation: 7 }) }]}>
+            {renderHeroCover(selected)}
           </NemuPressable>
         </View>
         <View style={styles.heroText}>
