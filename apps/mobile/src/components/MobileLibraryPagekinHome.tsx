@@ -144,7 +144,12 @@ const PagekinCover = memo(function PagekinCover({
     >
       <ZoomSource
         zoomId={zoomId}
-        style={{ width: totalWidth, height, borderRadius: radius }}
+        // The frame's curve has to clip its children: the spine's own
+        // left radii do not round it on their own (the #17 build showed
+        // the spine's top-left as a right angle), and the cover's left
+        // corners are square against the spine by design. Without this
+        // the whole left edge reads as a straight strip.
+        style={{ width: totalWidth, height, borderRadius: radius, overflow: "hidden" }}
       >
         {displayCover ? (
           <View style={{ flexDirection: "row", width: totalWidth, height }}>
