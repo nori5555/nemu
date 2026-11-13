@@ -697,9 +697,13 @@ export function ServerSourceBrowserScreen({
 
   const renderUpdateRow = useCallback(
     ({ item }: { item: MobileLiveSearchManga }) => (
-      <ServerSourceUpdateRow item={item} onPress={() => openManga(item)} />
+      <ServerSourceUpdateRow
+        item={item}
+        zoomId={zoomTransitionAvailable ? zoomIdFor(item) : null}
+        onPress={() => openManga(item, zoomIdFor(item))}
+      />
     ),
-    [openManga],
+    [openManga, zoomIdFor],
   );
 
   const featuredCardWidth = Math.round(windowWidth * 0.82);
@@ -938,7 +942,11 @@ export function ServerSourceBrowserScreen({
           ) : homeState.latest.status === "ready" && homeState.latest.items.length === 0 ? (
             <NemuInlineEmptyState icon="search-outline" title={strings.noResults} />
           ) : homeState.latest.status === "ready" ? (
-            <ServerSourceUpdateList items={homeState.latest.items} onOpen={openManga} />
+            <ServerSourceUpdateList
+              items={homeState.latest.items}
+              onOpen={openManga}
+              zoomIdFor={zoomIdFor}
+            />
           ) : null}
         </View>
       ) : null}
@@ -1128,11 +1136,13 @@ function ServerSourceFeaturedCard({ item, width, onPress, zoomId }: ServerSource
 
 type ServerSourceUpdateListProps = {
   items: MobileLiveSearchManga[];
-  onOpen: (item: MobileLiveSearchManga) => void;
+  onOpen: (item: MobileLiveSearchManga, zoomId?: string | null) => void;
+  /** Design-explore: the cover zooms into the detail page. */
+  zoomIdFor: (item: MobileLiveSearchManga) => string;
 };
 
 /** The latest-updates rows in one glass surface, divided by hairlines. */
-function ServerSourceUpdateList({ items, onOpen }: ServerSourceUpdateListProps) {
+function ServerSourceUpdateList({ items, onOpen, zoomIdFor }: ServerSourceUpdateListProps) {
   const { scheme, tokens } = useNemuTheme();
   return (
     <ExploreGlass
@@ -1151,7 +1161,11 @@ function ServerSourceUpdateList({ items, onOpen }: ServerSourceUpdateListProps) 
                 : null,
             ]}
           >
-            <ServerSourceUpdateRow item={item} onPress={() => onOpen(item)} />
+            <ServerSourceUpdateRow
+              item={item}
+              zoomId={zoomIdFor(item)}
+              onPress={() => onOpen(item, zoomIdFor(item))}
+            />
           </View>
         ))}
       </View>
@@ -1162,6 +1176,8 @@ function ServerSourceUpdateList({ items, onOpen }: ServerSourceUpdateListProps) 
 type ServerSourceUpdateRowProps = {
   item: MobileLiveSearchManga;
   onPress: () => void;
+  /** Design-explore: the cover zooms into the detail page. */
+  zoomId?: string | null;
 };
 
 /**
@@ -1169,8 +1185,22 @@ type ServerSourceUpdateRowProps = {
  * with a chevron. Suwayomi source listings carry no latest-chapter info,
  * so the row shows title + author instead of a chapter line.
  */
-function ServerSourceUpdateRow({ item, onPress }: ServerSourceUpdateRowProps) {
+function ServerSourceUpdateRow({ item, onPress, zoomId }: ServerSourceUpdateRowProps) {
   const { tokens } = useNemuTheme();
+  const cover = (
+    <ExploreCoverImage
+      source={
+        item.cover
+          ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
+          : null
+      }
+      title={item.title}
+    />
+  );
+  const coverStyle = [
+    styles.updateCover,
+    { backgroundColor: tokens.muted, borderColor: tokens.coverBorder },
+  ];
   return (
     <NemuPressable
       accessibilityRole="button"
@@ -1180,21 +1210,13 @@ function ServerSourceUpdateRow({ item, onPress }: ServerSourceUpdateRowProps) {
       pressedScale={0.98}
       style={styles.updateRow}
     >
-      <View
-        style={[
-          styles.updateCover,
-          { backgroundColor: tokens.muted, borderColor: tokens.coverBorder },
-        ]}
-      >
-        <ExploreCoverImage
-          source={
-            item.cover
-              ? { uri: item.cover, headers: item.coverHeaders, cache: "force-cache" as const }
-              : null
-          }
-          title={item.title}
-        />
-      </View>
+      {zoomId ? (
+        <ZoomSource zoomId={zoomId} style={coverStyle}>
+          {cover}
+        </ZoomSource>
+      ) : (
+        <View style={coverStyle}>{cover}</View>
+      )}
       <View style={styles.updateText}>
         <NemuText numberOfLines={2} style={[styles.updateTitle, { color: tokens.foreground }]}>
           {item.title}

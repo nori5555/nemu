@@ -139,7 +139,7 @@ import {
 import { mobileDesignExploreFlag } from "@/lib/mobileDesignExplore";
 import { pushMobileExploreDetail } from "@/components/explore/mobileExploreCover";
 import { setMobileSourceDetailSeed } from "@/lib/mobileSourceDetailSeed";
-import { ZoomSource } from "../../modules/nemu-window-layout";
+import { ZoomSource, zoomTransitionAvailable } from "../../modules/nemu-window-layout";
 import {
   addMobileSearchRecent,
   loadMobileSearchRecents,
@@ -458,14 +458,58 @@ function toLiveMangaSubtitle(item: MobileLiveSearchManga): string | undefined {
 function LiveMangaCard({
   item,
   strings,
+  zoomId,
   onPress,
 }: {
   item: MobileLiveSearchManga;
   strings: MobileStrings;
+  zoomId?: string | null;
   onPress: () => void;
 }) {
   const { tokens } = useNemuTheme();
   const subtitle = toLiveMangaSubtitle(item);
+  // Design-explore: the cover the detail page zooms out of (same pattern as
+  // the source listing card). Extracted so it renders plain when no zoom.
+  const coverImage = item.cover ? (
+    <MobileCachedImage
+      fallback={
+        <View
+          style={[
+            styles.liveCoverPlaceholder,
+            { backgroundColor: tokens.muted },
+          ]}
+        >
+          <Ionicons
+            name="book-outline"
+            size={18}
+            color={tokens.mutedForeground}
+          />
+        </View>
+      }
+      uriOwnership="source"
+      holdPreviousWhileLoading
+      holdIdentity={item.id}
+      source={{ uri: item.cover, headers: item.coverHeaders }}
+      style={styles.sourceIconImage}
+    />
+  ) : (
+    <View style={[styles.liveCoverPlaceholder, { backgroundColor: tokens.muted }]}>
+      <Ionicons name="book-outline" size={18} color={tokens.mutedForeground} />
+    </View>
+  );
+  const coverStyle = [
+    styles.liveCover,
+    {
+      backgroundColor: tokens.muted,
+      borderColor: tokens.coverBorder,
+      ...createNemuShadowStyle({
+        color: tokens.shadow,
+        offsetY: 3,
+        radius: 14,
+        elevation: 4,
+      }),
+    },
+  ];
 
   return (
     <NemuPressable
@@ -479,49 +523,13 @@ function LiveMangaCard({
       pressedScale={0.98}
       style={styles.liveCard}
     >
-      <View
-        style={[
-          styles.liveCover,
-          {
-            backgroundColor: tokens.muted,
-            borderColor: tokens.coverBorder,
-            ...createNemuShadowStyle({
-              color: tokens.shadow,
-              offsetY: 3,
-              radius: 14,
-              elevation: 4,
-            }),
-          },
-        ]}
-      >
-        {item.cover ? (
-          <MobileCachedImage
-            fallback={
-              <View
-                style={[
-                  styles.liveCoverPlaceholder,
-                  { backgroundColor: tokens.muted },
-                ]}
-              >
-                <Ionicons
-                  name="book-outline"
-                  size={18}
-                  color={tokens.mutedForeground}
-                />
-              </View>
-            }
-            uriOwnership="source"
-            holdPreviousWhileLoading
-            holdIdentity={item.id}
-            source={{ uri: item.cover, headers: item.coverHeaders }}
-            style={styles.sourceIconImage}
-          />
-        ) : (
-          <View style={[styles.liveCoverPlaceholder, { backgroundColor: tokens.muted }]}>
-            <Ionicons name="book-outline" size={18} color={tokens.mutedForeground} />
-          </View>
-        )}
-      </View>
+      {zoomId ? (
+        <ZoomSource zoomId={zoomId} style={coverStyle}>
+          {coverImage}
+        </ZoomSource>
+      ) : (
+        <View style={coverStyle}>{coverImage}</View>
+      )}
       <View style={styles.liveText}>
         <NemuText
           maxFontSizeMultiplier={nemuMaxFontSizeMultiplier}
@@ -549,11 +557,13 @@ function LiveSourceResultSection({
   strings,
   action,
   grid,
+  zoomIdFor,
 }: {
   group: Extract<MobileLiveSearchDisplayGroup, { status: "ready" }>;
   strings: MobileStrings;
   action: LiveResultAction;
   grid: SearchResultGrid;
+  zoomIdFor: (source: SearchSourceDisplay, manga: MobileLiveSearchManga) => string;
 }) {
   const viewAllLabel = formatMobileString(strings.feedback.viewAllInSource, {
     source: group.source.name,
@@ -588,6 +598,7 @@ function LiveSourceResultSection({
                     <LiveMangaCard
                       item={item}
                       strings={strings}
+                      zoomId={zoomIdFor(group.source, item)}
                       onPress={() => action.onPressResult(group.source, item)}
                     />
                   </View>
@@ -607,6 +618,7 @@ function LiveSearchResults({
   strings,
   action,
   grid,
+  zoomIdFor,
   onRetrySources,
 }: {
   state: LiveSearchState;
@@ -615,6 +627,7 @@ function LiveSearchResults({
   strings: MobileStrings;
   action: LiveResultAction;
   grid: SearchResultGrid;
+  zoomIdFor: (source: SearchSourceDisplay, manga: MobileLiveSearchManga) => string;
   onRetrySources: (sources: SearchSourceDisplay[]) => void;
 }) {
   // Each answer: the sections and lines below it glide, the new section fades
@@ -662,6 +675,7 @@ function LiveSearchResults({
             strings={strings}
             action={action}
             grid={grid}
+            zoomIdFor={zoomIdFor}
           />
         </Animated.View>
       ))}
@@ -1458,6 +1472,16 @@ export function SearchScreen() {
     [submitSearch],
   );
 
+  // Design-explore: the cover-zoom id the detail page zooms out of. The
+  // `search:` namespace keeps it apart from the server browser's `server:`
+  // and the source listing's `source:` ids for the same manga, or UIKit
+  // would zoom from the other screen's card.
+  const zoomIdFor = useCallback(
+    (source: SearchSourceDisplay, manga: MobileLiveSearchManga) =>
+      `search:${source.registryId}:${source.rawSourceId}:${manga.id}`,
+    [],
+  );
+
   const handleLiveResultPress = useCallback(
     (source: SearchSourceDisplay, manga: MobileLiveSearchManga) => {
       // Design-explore: the page paints the tapped title and cover from its
@@ -1471,10 +1495,11 @@ export function SearchScreen() {
           sourceId: source.rawSourceId,
           mangaId: manga.id,
           mangaTitle: manga.title,
+          zoom: zoomTransitionAvailable ? zoomIdFor(source, manga) : null,
         }),
       );
     },
-    []
+    [zoomIdFor]
   );
   const handleViewAllInSource = useCallback(
     (source: SearchSourceDisplay) => {
@@ -1963,6 +1988,7 @@ export function SearchScreen() {
                 onViewAll: handleViewAllInSource,
               }}
               grid={resultGridCells}
+              zoomIdFor={zoomIdFor}
               onRetrySources={retryLiveSearchSources}
             />
           </View>
