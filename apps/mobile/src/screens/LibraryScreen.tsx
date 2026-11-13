@@ -2395,11 +2395,9 @@ export function LibraryScreen({
     pushMobileExploreDetail(entry, cover ? { uri: cover } : null, `grid:${entry.item.libraryItemId}`);
   }, []);
   const shelfCardRenderer = useCallback((entry: LibraryEntry, width: number) => (
-    <View style={{ width }}>
-      <ExploreDissolveTarget id={entry.item.libraryItemId}>
-        <LibraryGridItem entry={entry} cardProgress={cardProgress.get(entry.item.libraryItemId)} strings={strings} installedSources={installedSources.data} getActions={getEntryActions} onLongPress={handleGridItemLongPress} onSelect={() => handleShelfSelect(entry)} enableZoom={false} placeholderWidth={width} />
-      </ExploreDissolveTarget>
-    </View>
+    <ExploreDissolveTarget id={entry.item.libraryItemId}>
+      <LibraryGridItem entry={entry} cardProgress={cardProgress.get(entry.item.libraryItemId)} strings={strings} installedSources={installedSources.data} getActions={getEntryActions} onLongPress={handleGridItemLongPress} onSelect={() => handleShelfSelect(entry)} enableZoom={false} placeholderWidth={width} cardStyle={{ width }} />
+    </ExploreDissolveTarget>
   ), [cardProgress, getEntryActions, handleGridItemLongPress, handleShelfSelect, installedSources.data, strings]);
   const showEmptyCollectionHero = shouldShowMobileEmptyCollectionHero({
     loading: showSkeleton,

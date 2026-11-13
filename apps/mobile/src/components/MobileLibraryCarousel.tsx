@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 import type { ReactNode } from "react";
-import { createNemuShadowStyle, useNemuTheme } from "@/design-system";
+import { useNemuTheme } from "@/design-system";
 import { MobilePoseLayoutView } from "@/components/MobilePoseLayoutView";
 import { getEntryTitle, type LibraryEntry } from "@/data/schema";
 import type { MobileLibraryCardProgress } from "@/lib/mobileLibraryPresentation";
@@ -83,9 +83,7 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
     <View style={styles.root}>
       <Animated.View key={selectedKey} entering={reduceMotion ? undefined : ZoomIn.duration(260)} exiting={reduceMotion ? undefined : ZoomOut.duration(150)} style={styles.hero}>
         <View style={{ width: heroWidth }}>
-          <NemuPressable accessibilityRole="button" accessibilityLabel={getEntryTitle(selected)} onPress={() => onOpen(selected)} style={[styles.heroCover, { borderColor: tokens.coverBorder, backgroundColor: tokens.muted, ...createNemuShadowStyle({ color: tokens.shadow, offsetY: 8, radius: 20, elevation: 7 }) }]}>
-            {renderHeroCover(selected)}
-          </NemuPressable>
+          {renderHeroCover(selected)}
         </View>
         <View style={styles.heroText}>
           <Text style={[styles.author, { color: tokens.mutedForeground }]} numberOfLines={1}>{info?.author ?? strings.library.progressUnread}</Text>
