@@ -763,6 +763,8 @@ export const mobileStringsJa: MobileStrings = {
     pluginSuperResolutionDescription:
       "Real-ESRGAN でカバーをデバイス上で 4 倍に拡大し、低解像度のカバーもくっきり表示します。",
     pluginSuperResolutionName: "カバー超解像",
+    pluginSuperResolutionModelReady: "モデル利用可能",
+    pluginSuperResolutionModelMissing: "この端末ではモデルを利用できません",
     pluginJapaneseLearningChatEmptyTitle: "こんにちは！ネムだよ",
     pluginJapaneseLearningChatEmptyDescription:
       "吹き出しをタップして、単語や文法、意味について聞いてね！",

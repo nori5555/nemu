@@ -717,6 +717,8 @@ export const mobileStringsZh: MobileStrings = {
     pluginSuperResolutionDescription:
       "用 Real-ESRGAN 在设备上把封面放大 4 倍，低清封面也能保持清晰。",
     pluginSuperResolutionName: "封面超分",
+    pluginSuperResolutionModelReady: "模型就绪",
+    pluginSuperResolutionModelMissing: "本机模型不可用",
     pluginJapaneseLearningChatEmptyTitle: "嗨！我是 Nemu",
     pluginJapaneseLearningChatEmptyDescription:
       "点击漫画对话框，问我关于词汇、语法或意思的问题吧！",

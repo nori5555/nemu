@@ -755,6 +755,8 @@ export const mobileStringsEn: MobileStrings = {
     pluginSuperResolutionDescription:
       "Upscale covers 4x on-device with Real-ESRGAN, so low-resolution covers stay sharp.",
     pluginSuperResolutionName: "Cover Super-Resolution",
+    pluginSuperResolutionModelReady: "Model ready",
+    pluginSuperResolutionModelMissing: "Model unavailable on this device",
     pluginJapaneseLearningChatEmptyTitle: "Hi! I'm Nemu",
     pluginJapaneseLearningChatEmptyDescription:
       "Tap any speech bubble and ask me about words, grammar, or meaning!",
