@@ -2,6 +2,12 @@
 # materialised by `bun run sr:model` (scripts/fetch-sr-model.ts). Without it
 # the pod still builds and the feature reports unavailable; Release builds
 # refuse to build without it (NEMU_SR_MODEL_OPTIONAL=1 overrides).
+# The floor MUST stay at or below the app's deployment target (16.4): Expo
+# autolinking silently skips a module whose minimum exceeds it ("was not
+# linked: requires iOS 17.0 but app targets 16.4"), which left #15 with the
+# JS hook but no native module and no model. The model itself still needs
+# iOS 18 at runtime (specificationVersion 9); the engine reports unavailable
+# below that, so the low floor only affects linking, not behaviour.
 sr_dir = File.join(__dir__, 'Models', 'NemuSuperResolution')
 sr_files = %w[RealESRGAN-x4v3.mlmodelc manifest.json SR-NOTICES.txt]
 sr_bundled = sr_files.all? { |name| File.exist?(File.join(sr_dir, name)) }
@@ -13,7 +19,7 @@ Pod::Spec.new do |s|
   s.description    = 'Upscales manga covers 4x on the Neural Engine with the compact Real-ESRGAN x4v3 model, tiled with overlap blending. Runs entirely on-device.'
   s.author         = 'Nemu'
   s.homepage       = 'https://nemu.pm'
-  s.platforms      = { :ios => '17.0' }
+  s.platforms      = { :ios => '16.4' }
   s.source         = { git: '' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
