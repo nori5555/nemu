@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 import type { ReactNode } from "react";
-import { NemuPressable, useNemuTheme } from "@/design-system";
+import { useNemuTheme } from "@/design-system";
 import { createNemuShadowStyle } from "@/design/shadows";
 import { MobilePoseLayoutView } from "@/components/MobilePoseLayoutView";
 import { getEntryTitle, type LibraryEntry } from "@/data/schema";
@@ -25,6 +25,8 @@ export function MobileLibraryCarousel({ entries, selectedId, onSelect, renderCar
   const { tokens } = useNemuTheme();
   const scroll = useRef<ScrollView>(null);
   const refs = useRef(new Map<string, View>());
+  const isCenteringRef = useRef(false);
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heroWidth = Math.min(windowWidth * 0.57, 300);
   const railWidth = Math.min(windowWidth * 0.39, 172);
   const selected = entries.find((entry) => entry.item.libraryItemId === selectedId) ?? entries[0] ?? null;
@@ -33,7 +35,13 @@ export function MobileLibraryCarousel({ entries, selectedId, onSelect, renderCar
   const centerCard = useCallback((id: string) => {
     requestAnimationFrame(() => refs.current.get(id)?.measureLayout(
       scroll.current?.getInnerViewNode?.() as never,
-      (x, _y, width) => scroll.current?.scrollTo({ x: Math.max(0, x - (windowWidth - width) / 2), animated: true }),
+      (x, _y, width) => {
+        const target = Math.max(0, x - (windowWidth - width) / 2);
+        isCenteringRef.current = true;
+        scroll.current?.scrollTo({ x: target, animated: true });
+        if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = setTimeout(() => { isCenteringRef.current = false; }, 420);
+      },
       () => undefined,
     ));
   }, [windowWidth]);
@@ -41,6 +49,31 @@ export function MobileLibraryCarousel({ entries, selectedId, onSelect, renderCar
   useEffect(() => {
     if (selectedKey) centerCard(selectedKey);
   }, [selectedKey, centerCard]);
+
+  const handleRailScroll = useCallback((_event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (isCenteringRef.current) return;
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => {
+      const centerX = windowWidth / 2;
+      let best: LibraryEntry | null = null;
+      let distance = Number.POSITIVE_INFINITY;
+      for (const entry of entries) {
+        const node = refs.current.get(entry.item.libraryItemId);
+        if (!node) continue;
+        node.measureInWindow((x, _y, width) => {
+          const currentDistance = Math.abs(x + width / 2 - centerX);
+          if (currentDistance < distance) {
+            distance = currentDistance;
+            best = entry;
+          }
+        });
+      }
+      requestAnimationFrame(() => {
+        if (best && (best as LibraryEntry).item.libraryItemId !== selectedKey) onSelect(best as LibraryEntry);
+      });
+    }, 90);
+  }, [entries, onSelect, selectedKey, windowWidth]);
+  useEffect(() => () => { if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current); }, []);
 
   if (!selected) return null;
   const info = progress.get(selectedKey ?? "");
@@ -58,7 +91,7 @@ export function MobileLibraryCarousel({ entries, selectedId, onSelect, renderCar
           {info?.badge ? <View style={[styles.progress, { backgroundColor: tokens.muted }]}><View style={[styles.progressFill, { width: `${Math.max(0, Math.min(100, Number.parseInt(info.badge, 10) || 27))}%`, backgroundColor: tokens.foreground }]} /></View> : null}
         </View>
       </Animated.View>
-      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.rail, { paddingHorizontal: Math.max(0, (windowWidth - railWidth) / 2 - 13) }]}>
+      <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} onScroll={handleRailScroll} scrollEventThrottle={16} contentContainerStyle={[styles.rail, { paddingHorizontal: Math.max(0, (windowWidth - railWidth) / 2 - 13) }]}>
         {entries.map((entry) => {
           const id = entry.item.libraryItemId;
           const isSelected = id === selectedKey;
