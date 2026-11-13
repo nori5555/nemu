@@ -714,6 +714,9 @@ export const mobileStringsZh: MobileStrings = {
     pluginValueEngineOnDevice: "设备端",
     pluginValueEngineCloud: "云端",
     pluginJapaneseLearningName: "日语学习",
+    pluginSuperResolutionDescription:
+      "用 Real-ESRGAN 在设备上把封面放大 4 倍，低清封面也能保持清晰。",
+    pluginSuperResolutionName: "封面超分",
     pluginJapaneseLearningChatEmptyTitle: "嗨！我是 Nemu",
     pluginJapaneseLearningChatEmptyDescription:
       "点击漫画对话框，问我关于词汇、语法或意思的问题吧！",

@@ -760,6 +760,9 @@ export const mobileStringsJa: MobileStrings = {
     pluginValueEngineOnDevice: "端末内",
     pluginValueEngineCloud: "クラウド",
     pluginJapaneseLearningName: "日本語学習",
+    pluginSuperResolutionDescription:
+      "Real-ESRGAN でカバーをデバイス上で 4 倍に拡大し、低解像度のカバーもくっきり表示します。",
+    pluginSuperResolutionName: "カバー超解像",
     pluginJapaneseLearningChatEmptyTitle: "こんにちは！ネムだよ",
     pluginJapaneseLearningChatEmptyDescription:
       "吹き出しをタップして、単語や文法、意味について聞いてね！",

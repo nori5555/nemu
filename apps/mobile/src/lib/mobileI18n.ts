@@ -637,6 +637,8 @@ export type MobileStrings = {
     pluginValueEngineOnDevice: string;
     pluginValueEngineCloud: string;
     pluginJapaneseLearningName: string;
+    pluginSuperResolutionDescription: string;
+    pluginSuperResolutionName: string;
     pluginJapaneseLearningChatEmptyTitle: string;
     pluginJapaneseLearningChatEmptyDescription: string;
     pluginJapaneseLearningChatInputPlaceholder: string;

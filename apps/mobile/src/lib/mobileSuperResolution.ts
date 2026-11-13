@@ -1,4 +1,10 @@
 import { useEffect, useState } from "react";
+import { useMobileDataStore } from "@/data/mobileDataContext";
+import { useMobileDataRevision } from "@/data/mobileDataEvents";
+import {
+  getMobileReaderPlugin,
+  getMobileReaderPluginEnabled,
+} from "./mobileReaderPlugins";
 import { NemuSuperResolutionModule } from "../../modules/nemu-super-resolution";
 
 /**
@@ -23,9 +29,36 @@ export function useSuperResolvedCover(
   // disk cache when the URI is unchanged, so re-running on a header change
   // is cheap.
   const headersKey = headers ? JSON.stringify(headers) : "";
+  // The Plugins sheet's super-resolution switch (next to Japanese Learning):
+  // off means the original cover, on means upscale when the model is in the
+  // build. Default on; the stored value loads async.
+  const store = useMobileDataStore();
+  const settingsRevision = useMobileDataRevision(["settings"]);
+  const [pluginEnabled, setPluginEnabled] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    void store
+      .getSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        const plugin = getMobileReaderPlugin("super-resolution");
+        setPluginEnabled(
+          plugin
+            ? getMobileReaderPluginEnabled(
+                plugin,
+                settings.readerPlugins?.["super-resolution"],
+              )
+            : true,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [store, settingsRevision]);
 
   useEffect(() => {
-    if (!uri) return;
+    if (!uri || !pluginEnabled) return;
     let cancelled = false;
     const module = NemuSuperResolutionModule;
     if (!module || !module.getCapabilities().available) return;
@@ -41,9 +74,14 @@ export function useSuperResolvedCover(
     return () => {
       cancelled = true;
     };
-  }, [uri, headersKey]);
+  }, [uri, headersKey, pluginEnabled]);
 
-  return upscaled && upscaled.uri === uri ? upscaled.path : null;
+  // Off means the original cover even when an upscaled file is already
+  // cached for this URI; back on reuses that file (the native side caches
+  // it on disk) instead of upscaling again.
+  return pluginEnabled && upscaled && upscaled.uri === uri
+    ? upscaled.path
+    : null;
 }
 
 /** False on web, in tests, and in binaries built without the model. */

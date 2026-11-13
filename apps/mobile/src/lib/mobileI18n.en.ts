@@ -752,6 +752,9 @@ export const mobileStringsEn: MobileStrings = {
     pluginValueEngineOnDevice: "On Device",
     pluginValueEngineCloud: "Cloud",
     pluginJapaneseLearningName: "Japanese Learning",
+    pluginSuperResolutionDescription:
+      "Upscale covers 4x on-device with Real-ESRGAN, so low-resolution covers stay sharp.",
+    pluginSuperResolutionName: "Cover Super-Resolution",
     pluginJapaneseLearningChatEmptyTitle: "Hi! I'm Nemu",
     pluginJapaneseLearningChatEmptyDescription:
       "Tap any speech bubble and ask me about words, grammar, or meaning!",

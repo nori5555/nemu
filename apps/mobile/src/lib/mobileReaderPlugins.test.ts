@@ -22,6 +22,7 @@ describe("mobile reader plugin helpers", () => {
     expect(plugins.map((plugin) => plugin.id)).toEqual([
       "japanese-learning",
       "dual-reader",
+      "super-resolution",
     ]);
     expect(plugins.every((plugin) => plugin.enabled)).toBe(true);
     expect(plugins[0].values).toMatchObject({
@@ -33,6 +34,10 @@ describe("mobile reader plugin helpers", () => {
     // Release (no __DEV__): Dual Read's only setting, the debug HUD, is left out.
     expect(plugins[1].settings).toEqual([]);
     expect(plugins[1].values).toEqual({});
+    // Super-resolution has no settings of its own: its row's enable switch
+    // is the toggle, and it defaults on.
+    expect(plugins[2].settings).toEqual([]);
+    expect(plugins[2].values).toEqual({});
   });
 
   test("Dual Read's debug overlay setting exists only in dev builds", () => {
@@ -159,6 +164,25 @@ describe("mobile reader plugin helpers", () => {
         sourceLanguages: ["ja"],
       })
     ).toBe(true);
+  });
+
+  test("keeps super-resolution out of the reader's active list", () => {
+    const plugins = getMobileReaderPluginStates(emptySettings);
+    const superResolution = plugins.find(
+      (plugin) => plugin.id === "super-resolution",
+    );
+
+    expect(superResolution).toBeDefined();
+    expect(superResolution!.enabled).toBe(true);
+    // It upscales covers in the library and detail heroes, so no reader
+    // context ever activates it — the Plugins sheet's switch is its only UI.
+    expect(
+      isMobileReaderPluginVisible(superResolution!, {
+        linkedSourceCount: 1,
+        sourceLanguages: ["ja"],
+        chapterLanguage: "ja-JP",
+      }),
+    ).toBe(false);
   });
 
   test("allows Japanese Learning on all languages when configured", () => {
