@@ -365,7 +365,7 @@ const LibraryGridItem = memo(function LibraryGridItem({
       cardStyle={cardStyle}
       onLongPress={!mobileNativeQuickMenuAvailable && onLongPress ? handleLongPress : undefined}
       onPress={designExplore && enableZoom ? exploreOpen : onSelect ? () => onSelect() : undefined}
-      wrapCover={designExplore ? wrapCover : undefined}
+      wrapCover={designExplore && enableZoom ? wrapCover : undefined}
       placeholder={
         designExplore && placeholderWidth ? (
           <MobileExploreCoverPlaceholder title={getEntryTitle(entry)} width={placeholderWidth} />
