@@ -128,6 +128,7 @@ const PagekinCover = memo(function PagekinCover({
   superResolve,
   grain,
   spine,
+  frameHeight,
 }: {
   entry: LibraryEntry;
   installedSources: InstalledSource[];
@@ -139,6 +140,15 @@ const PagekinCover = memo(function PagekinCover({
   zoomId: string;
   /** Upscale the cover 4x on-device (featured cover always; row cards up to ROW_SR_LIMIT). */
   superResolve?: boolean;
+  /**
+   * Shorter frame than the cover's full height: the row's shelf look. The
+   * image inside keeps its full height and is top-aligned, so the frame's
+   * overflow hides the cover's foot — a shorter book, not a shifted one.
+   * The card's bottom then sits on the shelf line instead of hanging below
+   * it (a translateY would drag the bottom down with the top). Omitted
+   * for the featured cover, which always shows its full height.
+   */
+  frameHeight?: number;
   /** Paper grain over the cover (featured cover only; the row stays clean). */
   grain?: boolean;
   /** Page block on the cover's left edge (featured cover only). */
@@ -179,8 +189,11 @@ const PagekinCover = memo(function PagekinCover({
         // left radii do not round it on their own (the #17 build showed
         // the spine's top-left as a right angle), and the cover's left
         // corners are square against the spine by design. Without this
-        // the whole left edge reads as a straight strip.
-        style={{ width: totalWidth, height, borderRadius: radius, overflow: "hidden" }}
+        // the whole left edge reads as a straight strip. The frame is
+        // also what clips a row card's foot (see frameHeight): the image
+        // inside stays full height, so the clip only ever takes the
+        // cover's foot, never its head.
+        style={{ width: totalWidth, height: frameHeight ?? height, borderRadius: radius, overflow: "hidden" }}
       >
         {displayCover ? (
           <View style={{ flexDirection: "row", width: totalWidth, height }}>
@@ -291,13 +304,20 @@ const PagekinRowCard = memo(function PagekinRowCard({
   // card turns it to dust — the grid's shake-and-scraps — instead of
   // only fading it: the target hides the card, shadow included, while
   // its dust flies. At rest the card sits like a book on a shelf: it
-  // overlaps its neighbour and sits a few points higher or lower than
-  // the next, so each shadow still belongs to one book and nothing merges
-  // into a slab under the row. While the row scrolls it stands with a gap
-  // and level tops, then gathers again once the scroll settles. No
-  // rotation: the reference does not tilt its cards (measured vertical to
-  // the pixel), and the ±5° tilt is what made this row read as stiff.
+  // overlaps its neighbour and is a few points SHORTER than the next,
+  // so the tops stagger while every bottom sits on the same shelf line.
+  // A translateY would drag the bottom down with the top and leave a
+  // sawtooth along the shelf — that was the #22 rest state, and it read
+  // as messy. While the row scrolls each card rises by its own offset,
+  // so the tops level out and the row stands with a gap, then gathers
+  // again once the scroll settles. No rotation: the reference does not
+  // tilt its cards (measured vertical to the pixel), and the ±5° tilt is
+  // what made this row read as stiff.
   const yOffset = ROW_Y_OFFSETS[index % ROW_Y_OFFSETS.length];
+  // The frame is the cover minus this card's shelf offset; the image
+  // inside keeps its full height (see PagekinCover's frameHeight), so
+  // the shorter frame only ever hides the cover's foot.
+  const frameHeight = cardWidth * 1.5 - yOffset;
   // Each card follows the row's spread on its own spring, starting
   // ROW_STAGGER_MS after the one before it. The spring config follows the
   // target: quick with a breath of overshoot while opening, slower and
@@ -319,7 +339,12 @@ const PagekinRowCard = memo(function PagekinRowCard({
         index === 0
           ? 0
           : interpolate(value, [0, 1], [-ROW_OVERLAP, ROW_CARD_GAP]),
-      transform: [{ translateY: yOffset * (1 - value) }],
+      // At rest the card sits on the shelf (its frame is shorter by
+      // yOffset, so the top already staggers); while scrolling it rises
+      // by exactly its offset, levelling the tops. The bottom lifts off
+      // the shelf mid-scroll, which the eye never catches while the row
+      // is moving — and it settles back on the line when it gathers.
+      transform: [{ translateY: -yOffset * value }],
     };
   });
   return (
@@ -342,6 +367,7 @@ const PagekinRowCard = memo(function PagekinRowCard({
             entry={entry}
             installedSources={installedSources}
             width={cardWidth}
+            frameHeight={frameHeight}
             // Row cards share the featured cover's 18pt corners now
             // (the fan's 10pt was dropped with the fan).
             radius={18}
@@ -549,6 +575,13 @@ export const MobileLibraryPagekinHome = memo(function MobileLibraryPagekinHome({
           onScrollEndDrag={gatherRow}
           contentContainerStyle={{
             paddingHorizontal: ROW_CONTENT_PADDING,
+            // The cards are different heights at rest (each frame is
+            // shorter by its shelf offset), so they must sit on the
+            // container's bottom — the shelf line — instead of stretching
+            // or hanging from the top. Without this the stagger vanishes:
+            // the row's default stretch would pull every card to the
+            // tallest card's height.
+            alignItems: "flex-end",
             // The row shadow (offset 4, radius 10) fades ~25pt past the
             // cover; 32pt of bottom room lets it fade out before the
             // scroller's edge, so no hard line ever appears under the row.
