@@ -924,7 +924,7 @@ export function LibraryScreen({
   mode = "library",
 }: LibraryScreenProps = {}) {
   const { verticalBarSide, width: windowWidth, height: windowHeight, hasFoldRegion } = useMobileAdaptiveLayout();
-  const { scheme, tokens } = useNemuTheme();
+  const { scheme, tokens, reduceMotion } = useNemuTheme();
   const usesNativeHeader = usesNemuNativeHeader;
   const store = useMobileDataStore();
   const {
@@ -3213,6 +3213,9 @@ const styles = StyleSheet.create({
   },
   emptyHero: {
     flex: 1,
+  },
+  heroCard: {
+    width: "100%",
   },
   scopeChip: {
     minHeight: 32,

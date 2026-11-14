@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Form as SwiftForm, Host as SwiftHost, Spacer as SwiftSpacer, Text as SwiftText } from "@expo/ui/swift-ui";
+import { Form as SwiftForm, Host as SwiftHost, Section as SwiftSection, Spacer as SwiftSpacer, Text as SwiftText } from "@expo/ui/swift-ui";
 import { MobileServerSourceSections } from "@/components/MobileServerSourceSections.ios";
 import { useServerSourceForm, type ServerSourceFormParams } from "@/components/useServerSourceForm";
 import { nemuSoftScrollEdge, renderNemuNativeToolbarButtons, useNemuTheme } from "@/design-system";
