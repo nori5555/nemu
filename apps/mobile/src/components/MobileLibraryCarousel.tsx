@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
+import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance, type ViewInstance } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 import type { ReactNode } from "react";
-import { useNemuTheme } from "@/design-system";
+import { NemuPressable, useNemuTheme } from "@/design-system";
 import { MobilePoseLayoutView } from "@/components/MobilePoseLayoutView";
 import { getEntryTitle, type LibraryEntry } from "@/data/schema";
 import type { MobileLibraryCardProgress } from "@/lib/mobileLibraryPresentation";
@@ -14,7 +14,7 @@ type Props = {
   renderHeroCover: (entry: LibraryEntry) => ReactNode;
   onSelect: (entry: LibraryEntry) => void;
   onOpen: (entry: LibraryEntry) => void;
-  progress: Map<string, MobileLibraryCardProgress>;
+  progress: ReadonlyMap<string, MobileLibraryCardProgress>;
   strings: { library: { progressUnread: string } };
   reduceMotion: boolean;
 };
@@ -23,8 +23,8 @@ type Props = {
 export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderHeroCover, onSelect, onOpen, progress, strings, reduceMotion }: Props) {
   const { width: windowWidth } = useWindowDimensions();
   const { tokens } = useNemuTheme();
-  const scroll = useRef<ScrollView>(null);
-  const refs = useRef(new Map<string, View>());
+  const scroll = useRef<ScrollViewInstance>(null);
+  const refs = useRef(new Map<string, ViewInstance>());
   const isCenteringRef = useRef(false);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heroWidth = Math.min(windowWidth * 0.57, 300);
@@ -36,7 +36,7 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
 
   const centerCard = useCallback((id: string) => {
     requestAnimationFrame(() => refs.current.get(id)?.measureLayout(
-      scroll.current?.getInnerViewNode?.() as never,
+      scroll.current as ScrollViewInstance,
       (x, _y, width) => {
         isCenteringRef.current = true;
         scroll.current?.scrollTo({ x: Math.max(0, x + width / 2 - windowWidth / 2), animated: true });

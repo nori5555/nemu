@@ -1,4 +1,5 @@
-import { ActivityIndicator, StyleSheet, Text, View, type ReactNode } from "react-native";
+import type { ReactNode } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMobileLanguageSettings } from "@/data/mobileHooks";
 import { createNemuShadowStyle } from "@/design/shadows";
