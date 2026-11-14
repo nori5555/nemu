@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
-import { ScrollView, StyleSheet, Text, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance, type ViewInstance } from "react-native";
+import { ScrollView, StyleSheet, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewInstance, type ViewInstance } from "react-native";
 import Animated, { ZoomIn, ZoomOut } from "react-native-reanimated";
 import type { ReactNode } from "react";
-import { NemuPressable, useNemuTheme } from "@/design-system";
+import { NemuText, useNemuTheme } from "@/design-system";
 import { MobilePoseLayoutView } from "@/components/MobilePoseLayoutView";
 import { getEntryTitle, type LibraryEntry } from "@/data/schema";
 import type { MobileLibraryCardProgress } from "@/lib/mobileLibraryPresentation";
@@ -11,7 +11,7 @@ type Props = {
   entries: LibraryEntry[];
   selectedId: string | null;
   renderCard: (entry: LibraryEntry, width: number) => ReactNode;
-  renderHeroCover: (entry: LibraryEntry) => ReactNode;
+  renderHeroCover: (entry: LibraryEntry, width: number) => ReactNode;
   onSelect: (entry: LibraryEntry) => void;
   onOpen: (entry: LibraryEntry) => void;
   progress: ReadonlyMap<string, MobileLibraryCardProgress>;
@@ -27,6 +27,7 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
   const refs = useRef(new Map<string, ViewInstance>());
   const isCenteringRef = useRef(false);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settleGenerationRef = useRef(0);
   const heroWidth = Math.min(windowWidth * 0.57, 300);
   const railWidth = Math.min(windowWidth * 0.39, 172);
   const railCellSize = railWidth + 20;
@@ -35,15 +36,19 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
   const selectedKey = selected?.item.libraryItemId ?? null;
 
   const centerCard = useCallback((id: string) => {
+    settleGenerationRef.current += 1;
+    isCenteringRef.current = true;
     requestAnimationFrame(() => refs.current.get(id)?.measureLayout(
       scroll.current as ScrollViewInstance,
       (x, _y, width) => {
-        isCenteringRef.current = true;
         scroll.current?.scrollTo({ x: Math.max(0, x + width / 2 - windowWidth / 2), animated: true });
         if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
         scrollTimerRef.current = setTimeout(() => { isCenteringRef.current = false; }, 720);
       },
-      () => undefined,
+      () => {
+        if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = setTimeout(() => { isCenteringRef.current = false; }, 720);
+      },
     ));
   }, [windowWidth]);
 
@@ -53,8 +58,10 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
 
   const handleRailScroll = useCallback((_event: NativeSyntheticEvent<NativeScrollEvent>) => {
     if (isCenteringRef.current) return;
+    const generation = ++settleGenerationRef.current;
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
+      if (isCenteringRef.current || generation !== settleGenerationRef.current) return;
       const viewport = scroll.current;
       if (!viewport) return;
       viewport.measureInWindow((viewportX, _viewportY, viewportWidth) => {
@@ -66,6 +73,7 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
         void Promise.all(measurements.map(({ entry, node }) => new Promise<{ entry: LibraryEntry; distance: number }>((resolve) => {
           node.measureInWindow((x, _y, width) => resolve({ entry, distance: Math.abs(x + width / 2 - centerX) }));
         }))).then((results) => {
+          if (isCenteringRef.current || generation !== settleGenerationRef.current) return;
           const closest = results.reduce<{ entry: LibraryEntry; distance: number } | null>(
             (best, result) => !best || result.distance < best.distance ? result : best,
             null,
@@ -75,7 +83,10 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
       });
     }, 90);
   }, [entries, onSelect, selectedKey]);
-  useEffect(() => () => { if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current); }, []);
+  useEffect(() => () => {
+    settleGenerationRef.current += 1;
+    if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+  }, []);
 
   if (!selected) return null;
   const info = progress.get(selectedKey ?? "");
@@ -83,12 +94,23 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
     <View style={styles.root}>
       <Animated.View key={selectedKey} entering={reduceMotion ? undefined : ZoomIn.duration(260)} exiting={reduceMotion ? undefined : ZoomOut.duration(150)} style={styles.hero}>
         <View style={{ width: heroWidth }}>
-          {renderHeroCover(selected)}
+          {renderHeroCover(selected, heroWidth)}
         </View>
         <View style={styles.heroText}>
-          <Text style={[styles.author, { color: tokens.mutedForeground }]} numberOfLines={1}>{info?.author ?? strings.library.progressUnread}</Text>
-          <Text style={[styles.title, { color: tokens.foreground }]} numberOfLines={2}>{getEntryTitle(selected)}</Text>
-          {info?.percent !== undefined ? <View style={styles.progressRow}><View style={[styles.progress, { backgroundColor: tokens.muted }]}><View style={[styles.progressFill, { width: `${info.percent}%`, backgroundColor: tokens.foreground }]} /></View><Text style={[styles.percent, { color: tokens.mutedForeground }]}>{info.percent}%</Text></View> : null}
+          <NemuText color={tokens.mutedForeground} numberOfLines={1} style={styles.author}>
+            {info?.author ?? strings.library.progressUnread}
+          </NemuText>
+          <NemuText color={tokens.foreground} numberOfLines={2} style={styles.title}>
+            {getEntryTitle(selected)}
+          </NemuText>
+          {info?.percent !== undefined ? (
+            <View style={styles.progressRow}>
+              <View style={[styles.progress, { backgroundColor: tokens.muted }]}>
+                <View style={[styles.progressFill, { width: `${info.percent}%`, backgroundColor: tokens.foreground }]} />
+              </View>
+              <NemuText color={tokens.mutedForeground} style={styles.percent}>{info.percent}%</NemuText>
+            </View>
+          ) : null}
         </View>
       </Animated.View>
       <ScrollView
@@ -103,10 +125,8 @@ export function MobileLibraryCarousel({ entries, selectedId, renderCard, renderH
           const id = entry.item.libraryItemId;
           const isSelected = id === selectedKey;
           const cell = (
-            <View ref={(node) => { if (node) refs.current.set(id, node); else refs.current.delete(id); }} collapsable={false}>
-              <NemuPressable accessibilityRole="button" accessibilityLabel={getEntryTitle(entry)} accessibilityState={{ selected: isSelected }} onPress={() => onSelect(entry)} style={[styles.railCard, { width: railWidth, opacity: isSelected ? 1 : 0.86, transform: [{ scale: isSelected ? 1 : 0.9 }] }]}>
-                {renderCard(entry, railWidth)}
-              </NemuPressable>
+            <View ref={(node) => { if (node) refs.current.set(id, node); else refs.current.delete(id); }} collapsable={false} style={[styles.railCard, { width: railWidth, opacity: isSelected ? 1 : 0.86, transform: [{ scale: isSelected ? 1 : 0.9 }] }]}>
+              {renderCard(entry, railWidth)}
             </View>
           );
           return reduceMotion

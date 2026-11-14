@@ -1,0 +1,13 @@
+Super-resolution model notices
+==============================
+
+Real-ESRGAN x4v3 (compact) — BSD-3-Clause
+  Upstream: https://github.com/xinntao/Real-ESRGAN
+  Core ML package: https://huggingface.co/arraypress/upscale-realesrgan
+  (RealESRGAN-x4v3.mlpackage, converted with coremltools 9.0 from TorchScript)
+  License text: https://github.com/xinntao/Real-ESRGAN/blob/master/LICENSE
+
+The package is downloaded by scripts/fetch-sr-model.ts with pinned sha256
+hashes (see the script), compiled with `xcrun coremlcompiler` into
+ios/Models/NemuSuperResolution/RealESRGAN-x4v3.mlmodelc, and bundled by the
+NemuSuperResolution pod. It runs entirely on-device (Neural Engine).

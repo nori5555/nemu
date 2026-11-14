@@ -9,13 +9,16 @@ import {
   mergeSourceSettingValues,
 } from "./mobileSourceSettings";
 
-export type MobileReaderPluginId = "japanese-learning" | "dual-reader";
+export type MobileReaderPluginId =
+  | "japanese-learning"
+  | "dual-reader"
+  | "super-resolution";
 
 export type MobileReaderPlugin = {
   id: MobileReaderPluginId;
   name: string;
   description: string;
-  icon: "language-outline" | "copy-outline";
+  icon: "language-outline" | "copy-outline" | "sparkles-outline";
   defaultEnabled: boolean;
   builtin: boolean;
   settings: SourcePackageSetting[];
@@ -162,6 +165,17 @@ function makeMobileReaderPlugins(
           ]
         : [],
     },
+    {
+      id: "super-resolution",
+      name: strings.reader.pluginSuperResolutionName,
+      description: strings.reader.pluginSuperResolutionDescription,
+      icon: "sparkles-outline",
+      defaultEnabled: true,
+      builtin: true,
+      // No settings of its own: the plugin row's enable switch is the toggle,
+      // and it gates cover upscaling in the library and detail heroes.
+      settings: [],
+    },
   ];
 }
 
@@ -202,6 +216,10 @@ export function isMobileReaderPluginVisible(
 ): boolean {
   if (!plugin.enabled) return false;
   if (plugin.id === "dual-reader") return context.linkedSourceCount > 1;
+  // Super-resolution has no reader surface (it upscales covers in the
+  // library and detail heroes), so it never joins the reader's active list;
+  // its switch still lives in the Plugins sheet next to the others.
+  if (plugin.id === "super-resolution") return false;
   if (plugin.id === "japanese-learning") {
     if (plugin.values.enableForAllLanguages === true) return true;
     return (

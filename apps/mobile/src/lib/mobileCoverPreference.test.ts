@@ -47,6 +47,16 @@ describe("a sharper copy of the same cover", () => {
       ["https://deliver.cdn.nicomanga.jp/material/2d65e4/15535882qa?1723143012", ["https://deliver.cdn.nicomanga.jp/material/2d65e4/15535882?1723143012"]],
       ["https://uploads.mangadex.org/covers/m/c.jpg.256.jpg", ["https://uploads.mangadex.org/covers/m/c.jpg.512.jpg"]],
       ["https://uploads.mangadex.org/covers/m/c.jpg.512.jpg", []],
+      [
+        "https://static-tw.baozimh.com/cover/wotuidehaizi-chibanakahengqiangmengohengqiangmengguo.jpg",
+        ["https://static-tw.baozimh.com/cover/wotuidehaizi-chibanakahengqiangmengohengqiangmengguo.jpg?w=570&h=750&q=100"],
+      ],
+      [
+        "https://static-tw.baozimh.com/cover/wotuidehaizi-chibanakahengqiangmengohengqiangmengguo.jpg?w=285&h=375&q=100",
+        ["https://static-tw.baozimh.com/cover/wotuidehaizi-chibanakahengqiangmengohengqiangmengguo.jpg?w=570&h=750&q=100"],
+      ],
+      ["https://static-tw.baozimh.com/cover/wotuidehaizi-chibanakahengqiangmengohengqiangmengguo.jpg?w=570&h=750&q=100", []],
+      ["https://static.baozimh.com/cover/x.jpg", []],
       ["https://example.com/cpic/b/1.jpg", []],
       [null, []],
     ];

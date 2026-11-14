@@ -11,7 +11,10 @@ import { collectionCount } from "@/lib/mobileCollections";
  *    the book count as the subtitle. "All" is always present, so the library
  *    root is always one tap away.
  * 2. current — actions on the shown collection (only when one is shown).
- * 3. collections — create / manage.
+ * 3. default — the collection the Library opens on: "All" then every
+ *    collection, a checkmark on the default. Tapping one sets it (it does
+ *    not switch what is shown now).
+ * 4. collections — create / manage.
  */
 
 export type MobileLibraryTitleMenuIcon =
@@ -31,17 +34,22 @@ export type MobileLibraryTitleMenuItem = {
 };
 
 export type MobileLibraryTitleMenuSection = {
-  id: "scope" | "current" | "collections";
+  id: "scope" | "current" | "default" | "collections";
+  /** Shown as the inline section header where the surface supports one. */
+  title?: string;
   items: MobileLibraryTitleMenuItem[];
 };
 
 export type MobileLibraryTitleMenuAction =
   | { type: "select"; collectionId: string | null }
+  | { type: "set-default"; collectionId: string | null }
   | { type: "edit-current" }
   | { type: "create" }
   | { type: "manage" };
 
 export const MOBILE_LIBRARY_TITLE_MENU_ALL = "library:all";
+export const MOBILE_LIBRARY_TITLE_MENU_DEFAULT_ALL = "library:default:all";
+export const MOBILE_LIBRARY_TITLE_MENU_DEFAULT_PREFIX = "library:default:";
 export const MOBILE_LIBRARY_TITLE_MENU_COLLECTION_PREFIX = "library:collection:";
 export const MOBILE_LIBRARY_TITLE_MENU_EDIT_CURRENT = "library:edit-current";
 export const MOBILE_LIBRARY_TITLE_MENU_CREATE = "library:create";
@@ -52,6 +60,7 @@ export type MobileLibraryTitleMenuLabels = {
   editCollection: string;
   newCollection: string;
   manageCollections: string;
+  defaultCollection: string;
   bookCount: (count: number) => string;
 };
 
@@ -66,6 +75,7 @@ export function buildMobileLibraryTitleMenu({
   membership,
   libraryCount,
   selectedCollectionId,
+  defaultCollectionId = null,
   labels,
   disabled,
 }: {
@@ -75,6 +85,8 @@ export function buildMobileLibraryTitleMenu({
   libraryCount: number;
   /** The collection actually shown (null = All). */
   selectedCollectionId: string | null;
+  /** The collection the Library opens on (null = All). */
+  defaultCollectionId?: string | null;
   labels: MobileLibraryTitleMenuLabels;
   /** A collection write is in flight: keep the menu readable, block actions. */
   disabled: boolean;
@@ -123,6 +135,28 @@ export function buildMobileLibraryTitleMenu({
     });
   }
   sections.push({
+    id: "default",
+    title: labels.defaultCollection,
+    items: [
+      {
+        id: MOBILE_LIBRARY_TITLE_MENU_DEFAULT_ALL,
+        title: labels.all,
+        subtitle: labels.bookCount(libraryCount),
+        icon: "library",
+        checked: defaultCollectionId === null,
+        disabled,
+      },
+      ...collections.map((collection) => ({
+        id: `${MOBILE_LIBRARY_TITLE_MENU_DEFAULT_PREFIX}${collection.collectionId}`,
+        title: collection.name,
+        subtitle: labels.bookCount(collectionCount(collection.collectionId, membership)),
+        icon: "collection" as const,
+        checked: defaultCollectionId === collection.collectionId,
+        disabled,
+      })),
+    ],
+  });
+  sections.push({
     id: "collections",
     items: [
       {
@@ -149,9 +183,16 @@ export function resolveMobileLibraryTitleMenuAction(
   id: string,
 ): MobileLibraryTitleMenuAction | null {
   if (id === MOBILE_LIBRARY_TITLE_MENU_ALL) return { type: "select", collectionId: null };
+  if (id === MOBILE_LIBRARY_TITLE_MENU_DEFAULT_ALL) {
+    return { type: "set-default", collectionId: null };
+  }
   if (id === MOBILE_LIBRARY_TITLE_MENU_EDIT_CURRENT) return { type: "edit-current" };
   if (id === MOBILE_LIBRARY_TITLE_MENU_CREATE) return { type: "create" };
   if (id === MOBILE_LIBRARY_TITLE_MENU_MANAGE) return { type: "manage" };
+  if (id.startsWith(MOBILE_LIBRARY_TITLE_MENU_DEFAULT_PREFIX)) {
+    const collectionId = id.slice(MOBILE_LIBRARY_TITLE_MENU_DEFAULT_PREFIX.length);
+    return collectionId ? { type: "set-default", collectionId } : null;
+  }
   if (id.startsWith(MOBILE_LIBRARY_TITLE_MENU_COLLECTION_PREFIX)) {
     const collectionId = id.slice(MOBILE_LIBRARY_TITLE_MENU_COLLECTION_PREFIX.length);
     return collectionId ? { type: "select", collectionId } : null;

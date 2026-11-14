@@ -12,6 +12,8 @@ type MobileSourceRouteRef = {
 type MobileSourceMangaRouteRef = MobileSourceRouteRef & {
   mangaId: string;
   mangaTitle?: string | null;
+  /** Design-explore: the cover-zoom id the detail page zooms out of. */
+  zoom?: string | null;
 };
 
 type MobileSourceReaderRouteRef = MobileSourceMangaRouteRef & {
@@ -110,6 +112,14 @@ export function getMobileSourceBrowseHref({
   return `/browse/${encodeRouteSegment(registryId)}/${encodeRouteSegment(sourceId)}` as Href;
 }
 
+/** The in-app browser for a Suwayomi server's own extension sources. */
+export function getMobileSourceServerSourcesHref({
+  registryId,
+  sourceId,
+}: MobileSourceRouteRef): Href {
+  return `/sources/${encodeRouteSegment(registryId)}/${encodeRouteSegment(sourceId)}/server-sources` as Href;
+}
+
 export function getMobileSourceBrowseSearchHref({
   registryId,
   sourceId,
@@ -127,17 +137,23 @@ export function getMobileSourceMangaHref({
   sourceId,
   mangaId,
   mangaTitle,
+  zoom,
 }: MobileSourceMangaRouteRef): Href {
   const path = `/sources/${encodeRouteSegment(registryId)}/${encodeRouteSegment(sourceId)}/${encodeRouteSegment(mangaId)}`;
   const resolvedMangaTitle = normalizeMobileReaderRouteLabel(
     mangaTitle,
     mangaId,
   );
-  return (
-    resolvedMangaTitle
-      ? `${path}?mangaTitle=${encodeURIComponent(resolvedMangaTitle)}`
-      : path
-  ) as Href;
+  const queryParts: string[] = [];
+  if (resolvedMangaTitle) {
+    queryParts.push(`mangaTitle=${encodeURIComponent(resolvedMangaTitle)}`);
+  }
+  if (zoom) {
+    queryParts.push(`zoom=${encodeURIComponent(zoom)}`);
+  }
+  return (queryParts.length > 0
+    ? `${path}?${queryParts.join("&")}`
+    : path) as Href;
 }
 
 export function getMobileSourceMangaBackAction({

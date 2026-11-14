@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { Form as SwiftForm, Host as SwiftHost, Spacer as SwiftSpacer } from "@expo/ui/swift-ui";
+import { Form as SwiftForm, Host as SwiftHost, Spacer as SwiftSpacer, Text as SwiftText } from "@expo/ui/swift-ui";
 import { MobileServerSourceSections } from "@/components/MobileServerSourceSections.ios";
 import { useServerSourceForm, type ServerSourceFormParams } from "@/components/useServerSourceForm";
 import { nemuSoftScrollEdge, renderNemuNativeToolbarButtons, useNemuTheme } from "@/design-system";
@@ -15,14 +15,20 @@ export function ServerSourceScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack.Screen options={{ title: form.editing ? form.fields.name || form.kindName : form.kindName }} />
+      <Stack.Screen options={{ title: form.editing ? form.fields.name || form.kindName : form.kindName, headerBackVisible: !form.saving, gestureEnabled: !form.saving }} />
       <Stack.Toolbar placement="right">
         {renderNemuNativeToolbarButtons([
           { icon: "checkmark", label: strings.common.save, disabled: !form.canSave, onPress: () => void form.save() },
         ])}
       </Stack.Toolbar>
       <SwiftHost colorScheme={scheme} style={{ flex: 1 }}>
-        {form.loaded ? (
+        {form.loadError ? (
+          <SwiftForm modifiers={[nemuSoftScrollEdge()]}>
+            <SwiftSection footer={<SwiftText>{form.loadError}</SwiftText>}>
+              <SwiftText>{form.loadError}</SwiftText>
+            </SwiftSection>
+          </SwiftForm>
+        ) : form.loaded ? (
           <SwiftForm modifiers={[nemuSoftScrollEdge()]}>
             <MobileServerSourceSections form={form} />
           </SwiftForm>

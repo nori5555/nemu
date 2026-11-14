@@ -138,6 +138,12 @@ type PageListScaffoldProps<ItemT> = Omit<
    * never rests part-way scrolled.
    */
   fillViewport?: boolean;
+  /**
+   * The page's background, when it differs from the theme background
+   * (the library's Pagekin home is pure white in light mode, like the
+   * Pagekin reference, while the rest of the app stays on the token).
+   */
+  backgroundColor?: string;
 };
 
 type ScrollableWebNode = {
@@ -584,6 +590,7 @@ export function PageListScaffold<ItemT>({
   contentContainerStyle,
   listRef,
   fillViewport = false,
+  backgroundColor,
   ...flatListProps
 }: PageListScaffoldProps<ItemT>) {
   const contentInsetAdjustmentBehavior = resolveMobilePageContentInsetAdjustment({
@@ -665,7 +672,7 @@ export function PageListScaffold<ItemT>({
       {viewportFill.observer}
       <FlatList
         ref={setListRef}
-        style={[styles.root, { backgroundColor: tokens.background }]}
+        style={[styles.root, { backgroundColor: backgroundColor ?? tokens.background }]}
         automaticallyAdjustContentInsets={contentInsetAdjustmentBehavior !== "never"}
         automaticallyAdjustsScrollIndicatorInsets={contentInsetAdjustmentBehavior !== "never"}
         contentContainerStyle={[contentStyle, viewportFill.style, contentContainerStyle]}

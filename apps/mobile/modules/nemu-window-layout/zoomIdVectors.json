@@ -3,6 +3,8 @@
   { "raw": "continue:source:aidoku-community:ja.shonenjumpplus:/episode/10834108156648240735", "canonical": "continue:source:aidoku-community:ja.shonenjumpplus:/episode/10834108156648240735" },
   { "raw": "detail:source:aidoku-community:ja.shonenjumpplus:%252Fepisode%252F108", "canonical": "detail:source:aidoku-community:ja.shonenjumpplus:/episode/108" },
   { "raw": "shelf:multi.webtoon:95", "canonical": "shelf:multi.webtoon:95" },
+  { "raw": "server:self-hosted:suwayomi.test:114", "canonical": "server:self-hosted:suwayomi.test:114" },
+  { "raw": "server:self-hosted:suwayomi.test:%2Fepisode%2F108", "canonical": "server:self-hosted:suwayomi.test:/episode/108" },
   { "raw": "grid:a%3Ab%20c", "canonical": "grid:a:b c" },
   { "raw": "search:%E3%83%AF%E3%83%B3%E3%83%94%E3%83%BC%E3%82%B9", "canonical": "search:ワンピース" },
   { "raw": "detail:100%", "canonical": "detail:100%" },

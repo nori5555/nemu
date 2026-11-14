@@ -1,5 +1,11 @@
 import type { Chapter, Filter, Listing, Manga, MangaPageResult } from "@/sources/aidokuContract";
-import type { SelfHostedBackend, SelfHostedPageRef } from "./backend";
+import type {
+  SelfHostedBackend,
+  SelfHostedPageRef,
+  SelfHostedSource,
+  SelfHostedSourceBrowseType,
+  SelfHostedSourceBrowser,
+} from "./backend";
 import { SelfHostedError, basicAuthHeader, buildUrl, errorForStatus, parseJson, type SelfHostedTransport } from "./http";
 import type { SelfHostedCredentials } from "./policy";
 
@@ -33,6 +39,17 @@ type GqlChapter = {
   scanlator?: string | null;
 };
 
+/**
+ * A server-side extension source. `id` is a LongString: it arrives and is
+ * sent back as a string, never parsed into a JS number (some ids exceed
+ * 2^53), and it is not the installed source's id.
+ */
+type GqlSource = {
+  id: string;
+  name: string;
+  lang: string;
+};
+
 const STATUS: Record<string, 0 | 1 | 2 | 3 | 4> = {
   ONGOING: 1,
   COMPLETED: 2,
@@ -43,6 +60,15 @@ const STATUS: Record<string, 0 | 1 | 2 | 3 | 4> = {
 };
 
 const MANGA_FIELDS = "id title author artist description genre status thumbnailUrl";
+
+/** A manga's server id as an integer; the updateManga mutation needs an Int. */
+function suwayomiMangaId(manga: { key: string }): number {
+  const id = Number(manga.key);
+  if (!Number.isInteger(id)) {
+    throw new SelfHostedError("invalid-response", `Not a Suwayomi manga id: ${manga.key}`);
+  }
+  return id;
+}
 
 export type SuwayomiBackendOptions = {
   server: string;
@@ -57,7 +83,7 @@ export function suwayomiAuthHeaders(credentials: SelfHostedCredentials): Record<
   return {};
 }
 
-export function createSuwayomiBackend(options: SuwayomiBackendOptions): SelfHostedBackend {
+export function createSuwayomiBackend(options: SuwayomiBackendOptions): SelfHostedBackend & SelfHostedSourceBrowser {
   const server = options.server.replace(/\/+$/, "");
   const headers = suwayomiAuthHeaders(options.credentials);
   const absolute = (path: string | null | undefined) =>
@@ -150,6 +176,89 @@ export function createSuwayomiBackend(options: SuwayomiBackendOptions): SelfHost
         id: Number(manga.key),
       });
       return { ...mapManga(data.manga), url: buildUrl(server, `/manga/${manga.key}`) };
+    },
+
+    /**
+     * The server's loaded extension sources, as strings: `Source.id` is a
+     * LongString, so the id is kept verbatim and passed back verbatim to
+     * `searchSource`. Only sources from installed extensions appear here.
+     */
+    async listSources(signal): Promise<SelfHostedSource[]> {
+      const data = await gql<{ sources: { nodes: GqlSource[] } }>(
+        `query{ sources(first:3000){ nodes{ id name lang } } }`,
+        {},
+        signal,
+      );
+      return data.sources.nodes.map((source) => ({
+        id: String(source.id),
+        name: source.name,
+        lang: source.lang,
+      }));
+    },
+
+    /**
+     * Search inside one server source. This can take 5–60s on the server
+     * (it fetches the source live), so callers must only call it from a
+     * submit button with a cancel path, never per keystroke. The matches
+     * are written into the server's DB by this call (expected: the All
+     * listing grows); `inLibrary` is untouched until `addMangaToLibrary`.
+     */
+    async searchSource(sourceId, query, page, signal): Promise<MangaPageResult> {
+      const data = await gql<{
+        fetchSourceManga: { mangas: GqlManga[]; hasNextPage: boolean };
+      }>(
+        `mutation($source:LongString!,$query:String!,$page:Int!){
+          fetchSourceManga(input:{source:$source,type:SEARCH,page:$page,query:$query}){
+            mangas{${MANGA_FIELDS}} hasNextPage}}`,
+        { source: sourceId, query, page: Math.max(page, 1) },
+        signal,
+      );
+      return {
+        entries: data.fetchSourceManga.mangas.map(mapManga),
+        hasNextPage: data.fetchSourceManga.hasNextPage,
+      };
+    },
+
+    /**
+     * A source's POPULAR / LATEST listing: the same fetchSourceManga call
+     * as a search, but with no query — the server returns the source's own
+     * popular or latest page instead of matches.
+     */
+    async browseSource(
+      sourceId,
+      type: SelfHostedSourceBrowseType,
+      page,
+      signal,
+    ): Promise<MangaPageResult> {
+      const data = await gql<{
+        fetchSourceManga: { mangas: GqlManga[]; hasNextPage: boolean };
+      }>(
+        `mutation($source:LongString!,$page:Int!){
+          fetchSourceManga(input:{source:$source,type:${type},page:$page}){
+            mangas{${MANGA_FIELDS}} hasNextPage}}`,
+        { source: sourceId, page: Math.max(page, 1) },
+        signal,
+      );
+      return {
+        entries: data.fetchSourceManga.mangas.map(mapManga),
+        hasNextPage: data.fetchSourceManga.hasNextPage,
+      };
+    },
+
+    async addMangaToLibrary(manga): Promise<void> {
+      const id = suwayomiMangaId(manga);
+      await gql<{ updateManga: { manga: { id: number; title: string; inLibrary: boolean } } }>(
+        `mutation($id:Int!){updateManga(input:{id:$id,patch:{inLibrary:true}}){manga{id title inLibrary}}}`,
+        { id },
+      );
+    },
+
+    async removeMangaFromLibrary(manga): Promise<void> {
+      const id = suwayomiMangaId(manga);
+      await gql<{ updateManga: { manga: { id: number; title: string; inLibrary: boolean } } }>(
+        `mutation($id:Int!){updateManga(input:{id:$id,patch:{inLibrary:false}}){manga{id title inLibrary}}}`,
+        { id },
+      );
     },
 
     async getChapterList(manga) {

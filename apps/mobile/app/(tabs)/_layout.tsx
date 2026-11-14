@@ -34,6 +34,12 @@ export default function TabsLayout() {
             sf={{ default: "house", selected: "house.fill" }}
           />
         </NativeTabs.Trigger>
+        <NativeTabs.Trigger name="server" disableAutomaticContentInsets>
+          <NativeTabs.Trigger.Label>{strings.nav.server}</NativeTabs.Trigger.Label>
+          <NativeTabs.Trigger.Icon
+            sf={{ default: "server.rack", selected: "server.rack" }}
+          />
+        </NativeTabs.Trigger>
         <NativeTabs.Trigger name="browse" disableAutomaticContentInsets>
           <NativeTabs.Trigger.Label>{strings.nav.browse}</NativeTabs.Trigger.Label>
           <NativeTabs.Trigger.Icon

@@ -7,10 +7,13 @@ export type MobileLibraryTitleMenuNativeSheetProps = {
   collections: LocalCollection[];
   strings: MobileStrings;
   selectedCollectionId: string | null;
+  /** The collection the Library opens on (null = All). */
+  defaultCollectionId: string | null;
   disabled: boolean;
   onClose: () => void;
   onDismiss?: () => void;
   onSelect: (collectionId: string | null) => void;
+  onSetDefaultCollection: (collectionId: string | null) => void;
   onManage: () => void;
 };
 

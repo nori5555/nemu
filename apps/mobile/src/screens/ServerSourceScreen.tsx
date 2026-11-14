@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useServerSourceForm, type ServerSourceFormParams } from "@/components/useServerSourceForm";
 import { NemuText, renderNemuNativeToolbarButtons, useNemuTheme } from "@/design-system";
@@ -41,7 +41,7 @@ export function ServerSourceScreen() {
             autoCorrect={false}
             importantForAutofill="no"
             textContentType="none"
-            editable={!form.saving}
+            editable={form.loaded && !form.loadError && !form.saving}
             keyboardType={row.url ? "url" : "default"}
             onChangeText={row.onChange}
             placeholder={row.placeholder}
@@ -57,13 +57,17 @@ export function ServerSourceScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: tokens.background }}>
-      <Stack.Screen options={{ title: form.editing ? fields.name || form.kindName : form.kindName }} />
+      <Stack.Screen options={{ title: form.editing ? fields.name || form.kindName : form.kindName, headerBackVisible: !form.saving, gestureEnabled: !form.saving }} />
       <Stack.Toolbar placement="right">
         {renderNemuNativeToolbarButtons([
           { icon: "checkmark", label: strings.common.save, disabled: !form.canSave, onPress: () => void form.save() },
         ])}
       </Stack.Toolbar>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        {!form.loaded && form.editing ? (
+          <View style={styles.loadingRow}><ActivityIndicator color={tokens.primary} /></View>
+        ) : null}
+        {form.loadError ? <NemuText style={{ color: tokens.danger }}>{form.loadError}</NemuText> : null}
         {renderGroup(rows)}
         {renderGroup(login)}
         <NemuText style={{ color: tokens.mutedForeground }}>
@@ -75,6 +79,7 @@ export function ServerSourceScreen() {
 }
 
 const styles = StyleSheet.create({
+  loadingRow: { minHeight: 52, alignItems: "center", justifyContent: "center" },
   content: { padding: 16, gap: 12 },
   group: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14 },
   row: { minHeight: 46, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },

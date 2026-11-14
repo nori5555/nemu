@@ -1,0 +1,3 @@
+# Real-ESRGAN x4v3 Core ML model (~2.4 MB download, ~5 MB compiled),
+# materialised by scripts/fetch-sr-model.ts (`bun run sr:model`).
+ios/Models/

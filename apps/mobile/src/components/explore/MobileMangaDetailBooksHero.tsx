@@ -44,6 +44,7 @@ import {
   withoutMobileDescriptionLicence,
 } from "@/lib/mobileMangaDetailInfo";
 import { useMobileCoverRegionTints, useMobileCoverTint } from "@/lib/useMobileCoverTint";
+import { useSuperResolvedCover } from "@/lib/mobileSuperResolution";
 import { ConcentricView, ZoomSource, ZoomTarget } from "../../../modules/nemu-window-layout";
 import { getMobileBooksHeroCoverWidth } from "./mobileExploreCover";
 import { useMobileExploreRestingFrame, useMobileExploreRestingTop } from "./useMobileExploreResting";
@@ -272,6 +273,12 @@ export function MobileMangaDetailBooksHero({
   const top = topHeader !== null && !pane && !inColumn;
   const [infoSheetOpen, setInfoSheetOpen] = useState(false);
   const remoteCover = isRemote(coverSource) ? coverSource : null;
+  // The same 4x on-device upscale as the library's featured cover: the
+  // upscaled file swaps in when it is ready, the original shows until then.
+  // Tint and the held under-cover stay on the original, so the page's colours
+  // do not churn when the sharper file lands.
+  const upscaledCoverUri = useSuperResolvedCover(remoteCover?.uri, remoteCover?.headers);
+  const displayCover = upscaledCoverUri ? { uri: upscaledCoverUri } : remoteCover;
   const tint = useMobileCoverTint(remoteCover, undefined, { holdPrevious: true });
   const regionTints = useMobileCoverRegionTints(pane || deferBody ? null : remoteCover);
   const palette = buildMobileCoverTintPalette(tint, scheme);
@@ -626,11 +633,11 @@ export function MobileMangaDetailBooksHero({
             style={StyleSheet.absoluteFill}
           />
         ) : null}
-        {remoteCover ? (
+        {displayCover ? (
           <MobileCachedImage
-            uriOwnership="source"
+            uriOwnership={upscaledCoverUri ? "app" : "source"}
             cacheKind="cover"
-            source={remoteCover}
+            source={displayCover}
             // A cover that waited on the network fades in over the held cover
             // (or the empty slot); a cached one shows at once. Inside the
             // native zoom views a native-driven fade can be cut off part way:

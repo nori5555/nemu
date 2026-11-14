@@ -146,6 +146,9 @@ export type MobileStrings = {
     browse: string;
     search: string;
     settings: string;
+    server: string;
+    serverLibrary: string;
+    serverSources: string;
   };
   welcome: {
     confirmSkip: string;
@@ -232,6 +235,7 @@ export type MobileStrings = {
     titleMenuEditCollection: string;
     titleMenuHint: string;
     titleMenuManageCollections: string;
+    defaultCollection: string;
     titleMenuNewCollection: string;
     updated: string;
     editCollectionTitle: string;
@@ -633,6 +637,10 @@ export type MobileStrings = {
     pluginValueEngineOnDevice: string;
     pluginValueEngineCloud: string;
     pluginJapaneseLearningName: string;
+    pluginSuperResolutionDescription: string;
+    pluginSuperResolutionName: string;
+    pluginSuperResolutionModelReady: string;
+    pluginSuperResolutionModelMissing: string;
     pluginJapaneseLearningChatEmptyTitle: string;
     pluginJapaneseLearningChatEmptyDescription: string;
     pluginJapaneseLearningChatInputPlaceholder: string;
@@ -1093,6 +1101,7 @@ export type MobileStrings = {
     loginFooter: string;
     connecting: string;
     connectFailedTitle: string;
+    serverLoadFailed: string;
     errorAddressEmpty: string;
     errorAddressInvalid: string;
     errorAddressScheme: string;
@@ -1109,6 +1118,58 @@ export type MobileStrings = {
     /** Shown instead of a source's content when its login is not on this device. */
     needsSignIn: string;
     reservedSourceId: string;
+  };
+  /** Browsing a Suwayomi server's own extension sources from inside Nemu. */
+  serverSourceBrowser: {
+    title: string;
+    chooseSource: string;
+    searchAllSources: string;
+    searchPlaceholder: string;
+    search: string;
+    cancelSearch: string;
+    allLanguages: string;
+    chinese: string;
+    english: string;
+    /** `{{count}}` is the number of sources on the server. */
+    sourceCount: string;
+    addToLibrary: string;
+    inLibrary: string;
+    addedToLibrary: string;
+    addFailed: string;
+    loadSourcesFailed: string;
+    searchFailed: string;
+    noSources: string;
+    noSourcesHint: string;
+    noResults: string;
+    noResultsHint: string;
+    typeToSearch: string;
+    searching: string;
+    searchingHint: string;
+    /** `{{done}}` sources have answered out of `{{total}}` so far. */
+    searchingProgress: string;
+    loadMore: string;
+    loadingMore: string;
+    unsupported: string;
+    openManga: string;
+    noServer: string;
+    noServerHint: string;
+    addServer: string;
+    /** Browse-mode chips and the home sections. */
+    home: string;
+    popular: string;
+    latest: string;
+    mode: string;
+    popularNewTitles: string;
+    latestUpdates: string;
+    viewAll: string;
+    browseFailed: string;
+  };
+  /** A Suwayomi server's Library listing, as a bottom-bar tab. */
+  serverLibrary: {
+    title: string;
+    emptyLibrary: string;
+    emptyLibraryHint: string;
+    loadFailed: string;
   };
   account: {
     title: string;

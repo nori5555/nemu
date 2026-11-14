@@ -35,6 +35,7 @@ import {
   router,
   useFocusEffect,
   useLocalSearchParams,
+  useNavigation,
 } from "expo-router";
 import { nextSyncTimestamp } from "@nemu/core";
 import { EmptyLibrary } from "@/components/EmptyLibrary";
@@ -53,7 +54,11 @@ import { renderExploreDetailBarMenu } from "@/components/explore/ExploreDetailBa
 import { SourceListingTabs, SourceListingTabsPlaceholder } from "@/components/explore/ExploreSourceSections";
 import { ExploreCoverImage } from "@/components/explore/ExploreCoverImage";
 import { ExploreSourceFilterMenus } from "@/components/explore/ExploreSourceFilterMenus";
-import { ContextMenuView } from "../../modules/nemu-window-layout";
+import {
+  ContextMenuView,
+  ZoomSource,
+  zoomTransitionAvailable,
+} from "../../modules/nemu-window-layout";
 import { emitMobileDataChanged } from "@/data/mobileDataEvents";
 import {
   useInstalledSources,
@@ -197,6 +202,7 @@ import {
 } from "@/lib/mobileSourceBrowseRoute";
 import {
   getMobileSourceMangaHref,
+  getMobileSourceServerSourcesHref,
   normalizeMobileSourceRouteParam,
 } from "@/lib/mobileSourceRoutes";
 import type { NemuPressableHapticFeedback } from "@/lib/nemuPressable";
@@ -472,6 +478,7 @@ function ListingMangaCard({
   strings,
   inLibrary = false,
   onAdd,
+  zoomId,
 }: {
   item: MobileLiveSearchManga;
   onPress: () => void;
@@ -481,6 +488,8 @@ function ListingMangaCard({
   inLibrary?: boolean;
   /** Design-explore: "Add to Library" from the cell's context menu. */
   onAdd?: () => void;
+  /** Design-explore: the cover zooms into the detail page. */
+  zoomId?: string | null;
 }) {
   const { tokens } = useNemuTheme();
   const subtitle = liveMangaSubtitle(item);
@@ -509,6 +518,58 @@ function ListingMangaCard({
         }
     : null;
 
+  const coverImage = mobileDesignExploreFlag ? (
+    <ExploreCoverImage source={coverSource} title={item.title} />
+  ) : coverSource ? (
+    <MobileCachedImage
+      fallback={
+        <View
+          style={[
+            styles.liveCoverPlaceholder,
+            { backgroundColor: tokens.muted },
+          ]}
+        >
+          <Ionicons
+            name="book-outline"
+            size={18}
+            color={tokens.mutedForeground}
+          />
+        </View>
+      }
+      uriOwnership="source"
+      holdPreviousWhileLoading
+      holdIdentity={item.id}
+      source={coverSource}
+      style={styles.sourceIconImage}
+    />
+  ) : (
+    <View
+      style={[
+        styles.liveCoverPlaceholder,
+        { backgroundColor: tokens.muted },
+      ]}
+    >
+      <Ionicons
+        name="book-outline"
+        size={18}
+        color={tokens.mutedForeground}
+      />
+    </View>
+  );
+  const coverStyle = [
+    styles.liveCover,
+    {
+      backgroundColor: tokens.muted,
+      borderColor: tokens.coverBorder,
+      ...createNemuShadowStyle({
+        color: tokens.shadow,
+        offsetY: 3,
+        radius: 14,
+        elevation: 4,
+      }),
+    },
+  ];
+
   const card = (
     <NemuPressable
       accessibilityRole="button"
@@ -530,60 +591,13 @@ function ListingMangaCard({
       pressedScale={0.98}
       style={styles.liveCard}
     >
-      <View
-        style={[
-          styles.liveCover,
-          {
-            backgroundColor: tokens.muted,
-            borderColor: tokens.coverBorder,
-            ...createNemuShadowStyle({
-              color: tokens.shadow,
-              offsetY: 3,
-              radius: 14,
-              elevation: 4,
-            }),
-          },
-        ]}
-      >
-        {mobileDesignExploreFlag ? (
-          <ExploreCoverImage source={coverSource} title={item.title} />
-        ) : coverSource ? (
-          <MobileCachedImage
-            fallback={
-              <View
-                style={[
-                  styles.liveCoverPlaceholder,
-                  { backgroundColor: tokens.muted },
-                ]}
-              >
-                <Ionicons
-                  name="book-outline"
-                  size={18}
-                  color={tokens.mutedForeground}
-                />
-              </View>
-            }
-            uriOwnership="source"
-            holdPreviousWhileLoading
-            holdIdentity={item.id}
-            source={coverSource}
-            style={styles.sourceIconImage}
-          />
-        ) : (
-          <View
-            style={[
-              styles.liveCoverPlaceholder,
-              { backgroundColor: tokens.muted },
-            ]}
-          >
-            <Ionicons
-              name="book-outline"
-              size={18}
-              color={tokens.mutedForeground}
-            />
-          </View>
-        )}
-      </View>
+      {zoomId ? (
+        <ZoomSource zoomId={zoomId} style={coverStyle}>
+          {coverImage}
+        </ZoomSource>
+      ) : (
+        <View style={coverStyle}>{coverImage}</View>
+      )}
       <View style={styles.liveText}>
         <Text
           numberOfLines={2}
@@ -1388,6 +1402,28 @@ export function SourceBrowseScreen() {
   const compactHeader = useCompactSourceBrowseHeader();
   const { appLanguage } = useMobileLanguageSettings();
   const strings = getMobileStrings(appLanguage);
+  // A tap right after popping a detail can be swallowed: the press reaches
+  // the card but the push never lands (the stack is still settling, or the
+  // touch is cancelled while the list re-lays-out). A push is cheap to
+  // retry — but only when this screen never blurred, so a real open that
+  // the user immediately exited does not re-open itself.
+  const navigation = useNavigation();
+  const mangaPushBlurredRef = useRef(false);
+  const mangaPushRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("blur", () => {
+      mangaPushBlurredRef.current = true;
+    });
+    return unsubscribe;
+  }, [navigation]);
+  useEffect(
+    () => () => {
+      if (mangaPushRetryRef.current !== null) {
+        clearTimeout(mangaPushRetryRef.current);
+      }
+    },
+    [],
+  );
   const sourceBrowseStringsRef = useRef(strings.sourceBrowse);
   const [selectedListingId, setSelectedListingId] = useState<string | null>(
     null,
@@ -2712,6 +2748,15 @@ export function SourceBrowseScreen() {
     sourceSettings.loading,
   ]);
 
+  // Design-explore: the cover-zoom id the detail page zooms out of. The
+  // `source:` namespace keeps it apart from the server browser's `server:`
+  // ids for the same manga, or UIKit would zoom from the other screen's card.
+  const zoomIdFor = useCallback(
+    (sourceDisplay: SearchSourceDisplay, manga: MobileLiveSearchManga) =>
+      `source:${sourceDisplay.registryId}:${sourceDisplay.rawSourceId}:${manga.id}`,
+    [],
+  );
+
   const handleListingMangaPress = useCallback(
     (
       sourceDisplay: SearchSourceDisplay,
@@ -2730,10 +2775,21 @@ export function SourceBrowseScreen() {
         sourceId: sourceDisplay.rawSourceId,
         mangaId: manga.id,
         mangaTitle: manga.title,
+        zoom: zoomTransitionAvailable ? zoomIdFor(sourceDisplay, manga) : null,
       });
-      router.push(intent?.add ? withMobileExploreAddIntent(href) : href);
+      const push = () =>
+        router.push(intent?.add ? withMobileExploreAddIntent(href) : href);
+      mangaPushBlurredRef.current = false;
+      if (mangaPushRetryRef.current !== null) {
+        clearTimeout(mangaPushRetryRef.current);
+      }
+      push();
+      mangaPushRetryRef.current = setTimeout(() => {
+        mangaPushRetryRef.current = null;
+        if (!mangaPushBlurredRef.current) push();
+      }, 400);
     },
-    [],
+    [zoomIdFor],
   );
   // Design-explore: which titles of this source are already in the library.
   const libraryEntriesForBadges = useLibraryEntries();
@@ -3142,6 +3198,23 @@ export function SourceBrowseScreen() {
             disabled: !source,
             onPress: enterSourceSearch,
           },
+          // Suwayomi only: browse the server's own extension sources and
+          // search inside one, without opening the server's WebUI.
+          ...(installedSource?.selfHosted?.kind === "suwayomi"
+            ? [
+                {
+                  icon: "square.stack.3d.up" as const,
+                  label: strings.serverSourceBrowser.title,
+                  hint: strings.serverSourceBrowser.title,
+                  disabled: !source,
+                  onPress: () => {
+                    router.push(
+                      getMobileSourceServerSourcesHref({ registryId, sourceId }),
+                    );
+                  },
+                },
+              ]
+            : []),
         ]
       : [];
 
@@ -3242,6 +3315,9 @@ export function SourceBrowseScreen() {
             source={installedSource}
             strings={strings}
             inLibrary={libraryMangaKeys?.has(`${sourceDisplay.registryId}:${sourceDisplay.rawSourceId}:${item.id}`)}
+            zoomId={
+              zoomTransitionAvailable ? zoomIdFor(sourceDisplay, item) : null
+            }
             onAdd={
               mobileDesignExploreFlag
                 ? () => handleListingMangaPress(sourceDisplay, item, { add: true })
@@ -3259,6 +3335,7 @@ export function SourceBrowseScreen() {
       strings,
       handleListingMangaPress,
       libraryMangaKeys,
+      zoomIdFor,
     ],
   );
 

@@ -14,7 +14,6 @@ import {
 } from "@/lib/mobileSourceDetailCache";
 import { measureMobileCoverPixelWidth, sampleMobileCoverFingerprint } from "@/lib/useMobileCoverTint";
 import {
-  markMobileExploreCoverCompared,
   setMobileExploreCoverPreference,
   wasMobileExploreCoverCompared,
 } from "./mobileExploreCoverPreference";
@@ -40,7 +39,8 @@ export const ExploreSharperCoverProbe = memo(function ExploreSharperCoverProbe({
   const skip = hasMobileUserCover(entry) || wasMobileExploreCoverCompared(id);
   const own = resolveMobileEntryDisplayCover(entry) ?? null;
   const [measured, setMeasured] = useState<Record<string, Measured>>({});
-  const [cached, setCached] = useState<string[] | null>(null);
+  const [cached, setCached] = useState<{ id: string; covers: string[] } | null>(null);
+  const cachedCovers = cached?.id === id ? cached.covers : null;
   const ownWidth = own && own in measured ? measured[own]!.width : undefined;
   const lookFurther = !skip && isMobileCoverBelowSharp(ownWidth);
 
@@ -50,7 +50,7 @@ export const ExploreSharperCoverProbe = memo(function ExploreSharperCoverProbe({
     [entry.sources],
   );
   useEffect(() => {
-    if (!lookFurther || cached !== null) return undefined;
+    if (!lookFurther || cachedCovers !== null) return undefined;
     let cancelled = false;
     void Promise.all(
       links.map((link) =>
@@ -61,22 +61,22 @@ export const ExploreSharperCoverProbe = memo(function ExploreSharperCoverProbe({
           .catch(() => null),
       ),
     ).then((covers) => {
-      if (!cancelled) setCached(covers.filter((cover): cover is string => Boolean(cover)));
+      if (!cancelled) setCached({ id, covers: covers.filter((cover): cover is string => Boolean(cover)) });
     });
     return () => {
       cancelled = true;
     };
-  }, [cached, links, lookFurther]);
+  }, [cachedCovers, id, links, lookFurther]);
 
   const candidates = useMemo(() => {
     if (!lookFurther) return [];
     const urls = new Set<string>();
-    for (const url of [...getMobileCoverSizeVariants(own), ...Object.values(known ?? {}), ...(cached ?? [])]) {
+    for (const url of [...getMobileCoverSizeVariants(own), ...Object.values(known ?? {}), ...(cachedCovers ?? [])]) {
       const trimmed = url?.trim();
       if (trimmed && trimmed !== own && isMobileUsableCoverUrl(trimmed)) urls.add(trimmed);
     }
     return [...urls];
-  }, [cached, known, lookFurther, own]);
+  }, [cachedCovers, known, lookFurther, own]);
 
   // Decide once the own cover says "full size", or every candidate is measured.
   useEffect(() => {
@@ -87,7 +87,7 @@ export const ExploreSharperCoverProbe = memo(function ExploreSharperCoverProbe({
       }
       return;
     }
-    if (cached === null || candidates.some((url) => !(url in measured))) return;
+    if (cachedCovers === null || candidates.some((url) => !(url in measured))) return;
     const ownPixels = measured[own]?.pixels ?? null;
     const pick = pickMobileSharperCover(
       { url: own, width: ownWidth },
@@ -98,8 +98,8 @@ export const ExploreSharperCoverProbe = memo(function ExploreSharperCoverProbe({
       })),
     );
     if (pick) setMobileExploreCoverPreference(id, pick);
-    else markMobileExploreCoverCompared(id);
-  }, [cached, candidates, id, lookFurther, measured, own, ownWidth, skip]);
+    else setMobileExploreCoverPreference(id, null);
+  }, [cachedCovers, candidates, id, lookFurther, measured, own, ownWidth, skip]);
 
   const report = useCallback((url: string, result: Measured) => {
     setMeasured((previous) => (url in previous ? previous : { ...previous, [url]: result }));

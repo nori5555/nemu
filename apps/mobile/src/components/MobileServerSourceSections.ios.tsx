@@ -16,11 +16,13 @@ import {
   multilineTextAlignment,
   textContentType,
   textInputAutocapitalization,
+  disabled,
 } from "@expo/ui/swift-ui/modifiers";
 import type { useServerSourceForm } from "./useServerSourceForm";
 
 // No username/password content types: a reader app's server login must not be offered to (or saved by) the system password manager.
 const plainText = [textInputAutocapitalization("never"), autocorrectionDisabled(true), multilineTextAlignment("trailing")];
+const editGate = (form: ReturnType<typeof useServerSourceForm>) => [disabled(!form.loaded || Boolean(form.loadError) || form.saving)];
 
 /** A server's address, name and login, in a native grouped Form. */
 export function MobileServerSourceSections({
@@ -50,7 +52,7 @@ export function MobileServerSourceSections({
             autoFocus={autoFocus}
             placeholder={form.serverPlaceholder}
             onTextChange={form.setServer}
-            modifiers={[...plainText, keyboardType("url")]}
+            modifiers={[...plainText, keyboardType("url"), ...editGate(form)]}
           />
         </SwiftLabeledContent>
         <SwiftLabeledContent label={strings.selfHosted.name}>
@@ -58,20 +60,20 @@ export function MobileServerSourceSections({
             text={name}
             placeholder={form.kindName}
             onTextChange={form.setName}
-            modifiers={[multilineTextAlignment("trailing")]}
+            modifiers={[multilineTextAlignment("trailing"), ...editGate(form)]}
           />
         </SwiftLabeledContent>
       </SwiftSection>
       <SwiftSection footer={<SwiftText>{strings.selfHosted.loginFooter}</SwiftText>}>
         <SwiftLabeledContent label={strings.selfHosted.username}>
-          <SwiftTextField text={username} placeholder={strings.selfHosted.username} onTextChange={form.setUsername} modifiers={plainText} />
+          <SwiftTextField text={username} placeholder={strings.selfHosted.username} onTextChange={form.setUsername} modifiers={[...plainText, ...editGate(form)]} />
         </SwiftLabeledContent>
         <SwiftLabeledContent label={strings.selfHosted.password}>
-          <SwiftSecureField text={password} placeholder={strings.selfHosted.password} onTextChange={form.setPassword} modifiers={[multilineTextAlignment("trailing"), textContentType("oneTimeCode")]} />
+          <SwiftSecureField text={password} placeholder={strings.selfHosted.password} onTextChange={form.setPassword} modifiers={[multilineTextAlignment("trailing"), textContentType("oneTimeCode"), ...editGate(form)]} />
         </SwiftLabeledContent>
         <SwiftLabeledContent label={strings.selfHosted.apiKey}>
           {/* A plain field: two secure fields in one form read as account sign-up, and iOS offers to generate a password. */}
-          <SwiftTextField text={apiKey} placeholder={strings.selfHosted.apiKey} onTextChange={form.setApiKey} modifiers={plainText} />
+          <SwiftTextField text={apiKey} placeholder={strings.selfHosted.apiKey} onTextChange={form.setApiKey} modifiers={[...plainText, ...editGate(form)]} />
         </SwiftLabeledContent>
       </SwiftSection>
       {form.saving ? (

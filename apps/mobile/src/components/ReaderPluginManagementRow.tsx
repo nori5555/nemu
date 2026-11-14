@@ -17,6 +17,7 @@ import { MOBILE_SETTINGS_GROUP_INSET } from "@/lib/mobileExploreRadius";
 import { formatMobileString, type MobileStrings } from "@/lib/mobileI18n";
 import { mobileReaderPluginRowSubtitle } from "@/lib/mobileReaderPluginSheet";
 import type { MobileReaderPluginState } from "@/lib/mobileReaderPlugins";
+import { superResolutionAvailable } from "@/lib/mobileSuperResolution";
 
 /**
  * A plugin's row in a settings group: Settings → Reader → Plugins, and the
@@ -50,6 +51,18 @@ export function ReaderPluginManagementRow({
 }) {
   const { tokens } = useNemuTheme();
   const selectDisabled = disabled || (!opensWhileOff && !plugin.enabled);
+  // Super-resolution never changes a cover visibly when its model is
+  // missing, and a failed upscale is silent by design — so the row says
+  // which it is up front. Status first: the subtitle is one line, and a
+  // trailing status would truncate away behind the description.
+  const subtitle =
+    plugin.id === "super-resolution"
+      ? `${
+          superResolutionAvailable()
+            ? strings.reader.pluginSuperResolutionModelReady
+            : strings.reader.pluginSuperResolutionModelMissing
+        } · ${mobileReaderPluginRowSubtitle(plugin, strings)}`
+      : mobileReaderPluginRowSubtitle(plugin, strings);
   // The row's two pressables open the same page; the whole row (to the
   // group's edges, clipped by it) takes the selection highlight.
   const rowHighlight = useNemuRowHighlight();
@@ -79,7 +92,7 @@ export function ReaderPluginManagementRow({
         accessibilityLabel={formatMobileString(strings.settings.editReaderPluginSettings, {
           name: plugin.name,
         })}
-        accessibilityHint={mobileReaderPluginRowSubtitle(plugin, strings)}
+        accessibilityHint={subtitle}
         accessibilityState={{ disabled: selectDisabled }}
         disabled={selectDisabled}
         onPressIn={rowHighlight.onPressIn}
@@ -105,7 +118,7 @@ export function ReaderPluginManagementRow({
             numberOfLines={1}
             style={[styles.subtitle, { color: tokens.mutedForeground }]}
           >
-            {mobileReaderPluginRowSubtitle(plugin, strings)}
+            {subtitle}
           </NemuText>
         </View>
       </NemuPressable>

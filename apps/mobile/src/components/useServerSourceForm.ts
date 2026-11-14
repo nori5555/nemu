@@ -51,6 +51,7 @@ export function useServerSourceForm(params: ServerSourceFormParams, { onSaved }:
   const [password, setPassword] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [loaded, setLoaded] = useState(!editingId);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -61,22 +62,37 @@ export function useServerSourceForm(params: ServerSourceFormParams, { onSaved }:
     if (!editingId) return;
     let cancelled = false;
     void (async () => {
-      const key = selfHostedSourceKey(editingId);
-      const [source, settings] = await Promise.all([store.getInstalledSource(key), store.getSourceSettings(key)]);
-      if (cancelled || !source?.selfHosted) return;
-      const credentials = readSelfHostedCredentials(settings?.values);
-      setKind(source.selfHosted.kind);
-      setServer(source.selfHosted.server);
-      setName(source.name ?? "");
-      setUsername(credentials.username ?? "");
-      setPassword(credentials.password ?? "");
-      setApiKey(credentials.apiKey ?? "");
-      setLoaded(true);
+      try {
+        const key = selfHostedSourceKey(editingId);
+        const [source, settings] = await Promise.all([
+          store.getInstalledSource(key),
+          store.getSourceSettings(key),
+        ]);
+        if (cancelled) return;
+        if (!source?.selfHosted) {
+          setLoadError(strings.selfHosted.serverLoadFailed);
+          setLoaded(true);
+          return;
+        }
+        const credentials = readSelfHostedCredentials(settings?.values);
+        setKind(source.selfHosted.kind);
+        setServer(source.selfHosted.server);
+        setName(source.name ?? "");
+        setUsername(credentials.username ?? "");
+        setPassword(credentials.password ?? "");
+        setApiKey(credentials.apiKey ?? "");
+        setLoadError(null);
+        setLoaded(true);
+      } catch (error) {
+        if (cancelled) return;
+        setLoadError(error instanceof Error ? error.message : strings.selfHosted.serverLoadFailed);
+        setLoaded(true);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [editingId, store]);
+  }, [editingId, store, strings.selfHosted.serverLoadFailed]);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
@@ -162,6 +178,7 @@ export function useServerSourceForm(params: ServerSourceFormParams, { onSaved }:
     }),
     editing: Boolean(editingId),
     loaded,
+    loadError,
     saving,
     canSave,
     fields: { server, name, username, password, apiKey },

@@ -111,4 +111,57 @@ describe("self-hosted executor source", () => {
     expect(await source.handlesBasicLogin()).toBe(false);
     expect(await source.hasImageProcessor()).toBe(false);
   });
+
+  test("a komga executor has no server-source methods", () => {
+    const source = createSelfHostedExecutorSource(base({ transport: transport({}).fn }));
+    expect(source.getServerSources).toBeUndefined();
+    expect(source.searchServerSource).toBeUndefined();
+    expect(source.addToLibrary).toBeUndefined();
+  });
+});
+
+describe("suwayomi server-source browsing through the executor", () => {
+  const SUWAYOMI = "http://192.168.1.20:4567";
+  const suwayomiFixture = (name: string) =>
+    readFileSync(join(import.meta.dir, "fixtures/suwayomi", name), "utf8");
+  const suwayomiTransport: SelfHostedTransport = async (request) => {
+    const query = (request.json as { query: string }).query;
+    if (query.includes("sources(")) return { status: 200, headers: {}, body: suwayomiFixture("sources.json") };
+    if (query.includes("fetchSourceManga")) return { status: 200, headers: {}, body: suwayomiFixture("fetchSourceManga.json") };
+    if (query.includes("updateManga")) return { status: 200, headers: {}, body: suwayomiFixture("updateManga.json") };
+    return { status: 200, headers: {}, body: "{}" };
+  };
+  const suwayomi = () =>
+    createSelfHostedExecutorSource({
+      source: {
+        registryId: "self-hosted",
+        sourceId: "suwayomi.test",
+        hasAuthentication: true,
+        selfHosted: { kind: "suwayomi" as const, server: SUWAYOMI },
+      },
+      settings: { username: "nemu", password: "pw" },
+      executionScope: "profile-a",
+      language: () => "en" as const,
+      transport: suwayomiTransport,
+    });
+
+  test("lists the server's sources through the executor", async () => {
+    const source = suwayomi();
+    expect(await source.getServerSources?.()).toEqual([
+      { id: "2496529850991657881", name: "拷貝漫畫", lang: "zh" },
+      { id: "123", name: "MangaDex", lang: "en" },
+      { id: "456", name: "包子漫画", lang: "zh-Hans" },
+      { id: "789", name: "禁漫天堂", lang: "zh-Hant" },
+    ]);
+  });
+
+  test("searches a server source and adds a match to the library", async () => {
+    const source = suwayomi();
+    const result = await source.searchServerSource?.("2496529850991657881", "特聘公务员", 1);
+    expect(result?.hasNextPage).toBe(true);
+    expect(result?.entries.map((entry) => entry.key)).toEqual(["987", "988"]);
+    await expect(
+      source.addToLibrary?.({ key: "987", title: "特聘公务员" }),
+    ).resolves.toBeUndefined();
+  });
 });

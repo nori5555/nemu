@@ -29,6 +29,7 @@ function toNativeSections(
 ): NavigationTitleMenuSection[] {
   return sections.map((section) => ({
     id: section.id,
+    title: section.title,
     items: section.items.map((item) => ({
       id: item.id,
       title: item.title,

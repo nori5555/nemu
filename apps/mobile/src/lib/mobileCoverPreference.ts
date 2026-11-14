@@ -52,7 +52,10 @@ export function isMobileCoverBelowSharp(width: number | null | undefined): boole
  * (largest first). Only patterns checked against the live sources:
  * - Manhuagui `…/cpic/{b,h,m,s,l}/<id>.jpg` (132–180 px) → `cpic/g/` (240 px);
  * - Niconico Seiga `…/material/<hash>/<id>qa?<v>` (320 px) → `…/<id>?<v>` (500 px);
- * - MangaDex `….jpg.256.jpg` → `….jpg.512.jpg`.
+ * - MangaDex `….jpg.256.jpg` → `….jpg.512.jpg`;
+ * - Baozimh (tw) `static-tw.baozimh.com/cover/<slug>.jpg` (180×240, no
+ *   params) → `?w=570&h=750&q=100` (570×750; the CDN serves any w/h, and
+ *   570 already fills the 210 pt hero at 3× before super-resolution).
  * The result is still measured and compared before it is shown.
  */
 export function getMobileCoverSizeVariants(url: string | null | undefined): string[] {
@@ -64,6 +67,11 @@ export function getMobileCoverSizeVariants(url: string | null | undefined): stri
   if (seiga) return [`${seiga[1]}${seiga[2] ?? ""}`];
   const mangadex = /^(https?:\/\/uploads\.mangadex\.org\/covers\/.+\.(?:jpe?g|png|webp))\.256\.jpg$/i.exec(value);
   if (mangadex) return [`${mangadex[1]}.512.jpg`];
+  const baozimh = /^(https?:\/\/static-tw\.baozimh\.com\/cover\/[^/?#]+\.jpe?g)(?:\?[^#]*)?(#.*)?$/i.exec(value);
+  if (baozimh) {
+    if (/[?&]w=570(?:&|#|$)/i.test(value) && /[?&]h=750(?:&|#|$)/i.test(value)) return [];
+    return [`${baozimh[1]}?w=570&h=750&q=100${baozimh[2] ?? ""}`];
+  }
   return [];
 }
 
